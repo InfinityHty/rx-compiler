@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - -std=c++17
+    # src/include/atn、misc 等子目录中的头文件以 "antlr4-common.h"、"atn/X.h"
+    # 形式互相引用，需要把 src/include 加入头文件搜索路径。
+    # 注意：.clangd 中的相对 -I 路径会相对被编译文件所在目录解析，
+    # 对 src/ 下不同位置的文件不可靠，因此这里使用绝对路径。
+    - -I/home/hty/rx-compiler/src/include
