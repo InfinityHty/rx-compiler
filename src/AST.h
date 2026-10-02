@@ -17,6 +17,8 @@ enum ASTNodeType {
     BreakExpr, ContinueExpr, ReturnExpr,
     // types
     UnitType, PathType, RefType, ArrayType,
+    // others
+    FnSelfParam,FnParam, StructField,
 };
 
 // 基类
@@ -24,9 +26,12 @@ class ASTNode {
 public:
     const ASTNodeType kind;
     ASTNode(const ASTNodeType kind_) : kind(kind_) {}
+    ASTNode* CheckType(rx::Parser::TypeRefContext* ctx);
+    ASTNode* CheckConstValue(rx::Parser::ConstValueContext* ctx);
     virtual ~ASTNode() = 0;
 };
-// 全部都是派生类
+// 派生类
+// items
 class CrateNode : public ASTNode {
 public:
     std::vector<ASTNode*> items; // 一个程序中的所有块
@@ -35,46 +40,181 @@ public:
 
 class FnItemNode : public ASTNode {
 public:
-    ASTNode* identifier, *blockExpr, *returnType; // 函数名 函数体 返回类型
+    std::string name; // 函数名
+    ASTNode* blockExpr; // 函数体
+    ASTNode* returnType = nullptr; // 返回类型
     std::vector<ASTNode*> parameters; // 函数参数
     FnItemNode(const ASTNodeType kind_,rx::Parser::FunctionDefinitionContext* ctx);
 
 };
+
 class StructItemNode : public ASTNode {
 public:
-    ASTNode* identifier;
-    std::vector<ASTNode*> structField;
+    std::string name; // 结构体名
+    std::vector<ASTNode*> structField; // 结构体里的内容
     StructItemNode(const ASTNodeType kind_,rx::Parser::StructDefinitionContext* ctx);
 };
+
 class ConstItemNode : public ASTNode {
 public:
-    ASTNode* identifier, *type, *value;
+    std::string name; // 常量名
+    ASTNode* type; // 常量类型
+    ASTNode* value; // 常量值
     ConstItemNode(const ASTNodeType kind_,rx::Parser::ConstantItemContext* ctx);
 
 };
+
 class ImplItemNode : public ASTNode {
 public:
-    ASTNode* type;
-    std::vector<ASTNode*> items;
+    ASTNode* type; // 填充的类型
+    std::vector<ASTNode*> associatedItems; // impl块的内容
     ImplItemNode(const ASTNodeType kind_,rx::Parser::InherentImplContext* ctx);
 };
-class LetStmt : public ASTNode {
+
+// statements
+class LetStmtNode : public ASTNode {
 public:
-    LetStmt(const ASTNodeType kind_);
+    std::string name; // 变量名
+    ASTNode* type; // 变量类型（可能需要推断）
+    ASTNode* expr; // 绑定值
+    bool mut; // 是否可变
+    LetStmtNode(const ASTNodeType kind_,rx::Parser::LetStatementContext* ctx);
 
 };
-class ExprStmt : public ASTNode {
+
+class ExprStmtNode : public ASTNode {
 public:
-    ExprStmt(const ASTNodeType kind_);
+    ASTNode* expr;
+    ExprStmtNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
 };
-class IntLit : public ASTNode {
+
+// expr
+class IntLitNode : public ASTNode {
 public:
-    
-    IntLit(const ASTNodeType kind_);
+    uint64_t value;
+    IntLitNode(const ASTNodeType kind_,std::string value_);
 };
-class BoolLit : public ASTNode {
+class BoolLitNode : public ASTNode {
 public:
     bool value;
-    BoolLit(const ASTNodeType kind_);
+    BoolLitNode(const ASTNodeType kind_,bool vlaue_);
+};
+class PathExprNode : public ASTNode {
+public:
+    PathExprNode(const ASTNodeType kind_);
 
+};
+class StructExprNode : public ASTNode {
+public:
+    StructExprNode(const ASTNodeType kind_,rx::Parser::StructFieldContext* ctx);
+
+};
+class ArrayExprNode : public ASTNode {
+public:
+    ArrayExprNode(const ASTNodeType kind_);
+
+};
+class ArrayRepeatNode : public ASTNode {
+public:
+    ArrayRepeatNode(const ASTNodeType kind_);
+
+};
+class UnaryExprNode : public ASTNode {
+public:
+    UnaryExprNode(const ASTNodeType kind_);
+
+};
+class BinaryExprNode : public ASTNode {
+public:
+    std::vector<ASTNode*> operands;
+    std::string op;
+    BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
+};
+class BlockExprNode : public ASTNode {
+public:
+    std::vector<ASTNode*> statements;
+    ASTNode* return_expression = nullptr;
+    BlockExprNode(const ASTNodeType kind_,rx::Parser::BlockExpressionContext* ctx);
+};
+class AssignExprNode : public ASTNode {
+public:
+    ASTNode* left;
+    ASTNode* right;
+    std::string op;
+    AssignExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
+};
+class IfExprNode : public ASTNode {
+public:
+    ASTNode* condition;
+    ASTNode* if_block;
+    ASTNode* else_block = nullptr;
+    IfExprNode(const ASTNodeType kind_,rx::Parser::IfExpressionContext* ctx);
+};
+class WhileExprNode : public ASTNode {
+public:
+    ASTNode* condition;
+    ASTNode* content;
+    WhileExprNode(const ASTNodeType kind_,rx::Parser::ConditionExpressionContext* ctx1,rx::Parser::BlockExpressionContext* ctx2);
+};
+class LoopExprNode : public ASTNode {
+public:
+    ASTNode* content;
+    LoopExprNode(const ASTNodeType kind_,rx::Parser::BlockExpressionContext* ctx);
+};
+class CastExprNode : public ASTNode {
+public:
+    CastExprNode(const ASTNodeType kind_);
+
+};
+class BreakExprNode : public ASTNode {
+public:
+    BreakExprNode(const ASTNodeType kind_);
+};
+class ContinueExprNode : public ASTNode {
+public:
+    ContinueExprNode(const ASTNodeType kind_);
+};
+// type
+class UnitTypeNode : public ASTNode {
+public:
+    UnitTypeNode(const ASTNodeType kind_);
+};
+class PathTypeNode : public ASTNode {
+public:
+    std::vector<std::string> segments; // 路径分段
+    PathTypeNode(const ASTNodeType kind_,rx::Parser::TypePathContext* ctx);
+
+};
+class RefTypeNode : public ASTNode {
+public:
+    ASTNode* type; // &后面跟着的type 如 &i32, &'a i32, &'a mut Vec<i32>, and &'_ i32
+    bool mut;
+    RefTypeNode(const ASTNodeType kind_,rx::Parser::ReferenceTypeContext* ctx);
+
+};
+class ArrayTypeNode : public ASTNode {
+public:
+    ASTNode* type;
+    ASTNode* length;
+    ArrayTypeNode(const ASTNodeType kind_,rx::Parser::ArrayTypeContext* ctx);
+};
+// others
+class FnSelfParamNode : public ASTNode {
+public:
+    bool mut;
+    bool amp;
+    FnSelfParamNode(const ASTNodeType kind_,rx::Parser::SelfParamContext* ctx);
+};
+class FnParamNode : public ASTNode {
+public:
+    std::string name;
+    bool mut;
+    ASTNode* type;
+    FnParamNode(const ASTNodeType kind_,rx::Parser::FunctionParamContext* ctx);
+};
+class StructFieldNode : public ASTNode {
+public:
+    std::string name;
+    ASTNode* type;
+    StructFieldNode(const ASTNodeType kind_,rx::Parser::StructFieldContext* ctx);
 };

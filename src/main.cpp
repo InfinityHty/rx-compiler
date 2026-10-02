@@ -2,10 +2,11 @@
 #include "Parser.h"
 #include "ANTLRFileStream.h"
 #include "CommonTokenStream.h"
+#include "AST.h"
 
 #include <iostream>
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "usage: rx <source-file>\n";
         return 2;
@@ -23,8 +24,8 @@ int main(int argc, char **argv) {
     antlr4::CommonTokenStream tokens(&lexer);
     rx::Parser parser(&tokens);
 
-    rx::Parser::CrateContext *tree = parser.crate(); // 程序入口crate
-    (void)tree;  // TODO: 交给 AstBuilder（继承 ParserBaseVisitor）构建 AST
+    rx::Parser::CrateContext* tree = parser.crate(); // build CST
+    CrateNode* ASTtree = new CrateNode(Crate,tree); // build AST
 
     // SEMANTIC 约定：退出 0 = 接受，退出 1 = 拒绝。
     // 目前只做到语法层面；语义检查写好后在这里汇总错误。
