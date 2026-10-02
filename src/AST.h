@@ -121,13 +121,14 @@ public:
 };
 class UnaryExprNode : public ASTNode {
 public:
-    UnaryExprNode(const ASTNodeType kind_);
-
+    ASTNode* expr;
+    std::string op;
+    UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
 };
 class BinaryExprNode : public ASTNode {
 public:
     std::vector<ASTNode*> operands;
-    std::string op;
+    std::vector<std::string> op;
     BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
 };
 class BlockExprNode : public ASTNode {
@@ -139,7 +140,7 @@ public:
 class AssignExprNode : public ASTNode {
 public:
     ASTNode* left;
-    ASTNode* right;
+    ASTNode* right = nullptr;
     std::string op;
     AssignExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
 };
@@ -163,7 +164,9 @@ public:
 };
 class CastExprNode : public ASTNode {
 public:
-    CastExprNode(const ASTNodeType kind_);
+    ASTNode* expr;
+    std::vector<ASTNode*> types;
+    CastExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
 
 };
 class BreakExprNode : public ASTNode {

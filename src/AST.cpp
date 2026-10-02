@@ -237,6 +237,7 @@ AssignExprNode::AssignExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto normal_ptr = dynamic_cast<rx::Parser::AssignmentExpressionContext*>(ctx);
     auto cond_ptr = dynamic_cast<rx::Parser::ConditionAssignmentExpressionContext*>(ctx);
     auto stmt_ptr = dynamic_cast<rx::Parser::StatementAssignmentExpressionContext*>(ctx);
+    auto cb_ptr = dynamic_cast<rx::Parser::ConditionBreakAssignmentExpressionContext*>(ctx);
     if(normal_ptr != nullptr){
         this->left = new BinaryExprNode(BinaryExpr,normal_ptr->logicalOrExpression());
         if(normal_ptr->expression() != nullptr){
@@ -262,6 +263,15 @@ AssignExprNode::AssignExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
         }
         if(stmt_ptr->assignmentOperator() != nullptr){
             this->op = stmt_ptr->assignmentOperator()->getText();
+        }
+    }
+    if(cb_ptr != nullptr){
+        this->left = new BinaryExprNode(BinaryExpr,cb_ptr->conditionBreakLogicalOrExpression());
+        if(cb_ptr->conditionExpression() != nullptr){
+            this->right = new AssignExprNode(AssignExpr,cb_ptr->conditionExpression()->conditionAssignmentExpression());
+        }
+        if(cb_ptr->assignmentOperator() != nullptr){
+            this->op = cb_ptr->assignmentOperator()->getText();
         }
     }
 }
@@ -312,53 +322,77 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto is_logic_or = dynamic_cast<rx::Parser::LogicalOrExpressionContext*>(ctx);
     auto is_cond_logic_or = dynamic_cast<rx::Parser::ConditionLogicalOrExpressionContext*>(ctx);
     auto is_stmt_logic_or = dynamic_cast<rx::Parser::StatementLogicalOrExpressionContext*>(ctx);
+    auto is_cb_logic_or = dynamic_cast<rx::Parser::ConditionBreakLogicalOrExpressionContext*>(ctx);
     if(is_logic_or != nullptr){
-        this->op = "||";
         std::vector<rx::Parser::LogicalAndExpressionContext*> operands = is_logic_or->logicalAndExpression();
         for(auto operand : operands){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->op.push_back("||");
         }
+        this->op.pop_back();
     }
     if(is_cond_logic_or != nullptr){
-        this->op = "||";
         std::vector<rx::Parser::ConditionLogicalAndExpressionContext*> operands = is_cond_logic_or->conditionLogicalAndExpression();
         for(auto operand : operands){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->op.push_back("||");
         }
+        this->op.pop_back();
     }
     if(is_stmt_logic_or != nullptr){
-        this->op = "||";
         rx::Parser::StatementLogicalAndExpressionContext* first_operand = is_stmt_logic_or->statementLogicalAndExpression();
         std::vector<rx::Parser::LogicalAndExpressionContext*> following_operands = is_stmt_logic_or->logicalAndExpression();
         this->operands.push_back(new BinaryExprNode(BinaryExpr,first_operand));
         for(auto operand : following_operands){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->op.push_back("||");
+        }
+    }
+    if(is_cb_logic_or != nullptr){
+        rx::Parser::ConditionBreakLogicalAndExpressionContext* first_operand = is_cb_logic_or->conditionBreakLogicalAndExpression();
+        std::vector<rx::Parser::ConditionLogicalAndExpressionContext*> following_operands = is_cb_logic_or->conditionLogicalAndExpression();
+        this->operands.push_back(new BinaryExprNode(BinaryExpr,first_operand));
+        for(auto operand : following_operands){
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->op.push_back("||");
         }
     }
     // ANDAND
     auto is_logic_and = dynamic_cast<rx::Parser::LogicalAndExpressionContext*>(ctx);
     auto is_cond_logic_and = dynamic_cast<rx::Parser::ConditionLogicalAndExpressionContext*>(ctx);
     auto is_stmt_logic_and = dynamic_cast<rx::Parser::StatementLogicalAndExpressionContext*>(ctx);
+    auto is_cb_logic_and = dynamic_cast<rx::Parser::ConditionBreakLogicalAndExpressionContext*>(ctx);
     if(is_logic_and != nullptr){
-        this->op = "&&";
         std::vector<rx::Parser::ComparisonExpressionContext*> operands = is_logic_and->comparisonExpression();
         for(auto operand : operands){
+            this->op.push_back("&&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_cond_logic_and != nullptr){
-        this->op = "&&";
         std::vector<rx::Parser::ConditionComparisonExpressionContext*> operands = is_cond_logic_and->conditionComparisonExpression();
         for(auto operand : operands){
+            this->op.push_back("&&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_stmt_logic_and != nullptr){
-        this->op = "&&";
         rx::Parser::StatementComparisonExpressionContext* first_operand = is_stmt_logic_and->statementComparisonExpression();
         std::vector<rx::Parser::ComparisonExpressionContext*> following_operands = is_stmt_logic_and->comparisonExpression();
         this->operands.push_back(new BinaryExprNode(BinaryExpr,first_operand));
         for(auto operand : following_operands){
+            this->op.push_back("&&");
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+        }
+    }
+    if(is_cb_logic_and != nullptr){
+        rx::Parser::ConditionBreakComparisonExpressionContext* first_operand = is_cb_logic_and->conditionBreakComparisonExpression();
+        std::vector<rx::Parser::ConditionComparisonExpressionContext*> following_operands = is_cb_logic_and->conditionComparisonExpression();
+        this->operands.push_back(new BinaryExprNode(BinaryExpr,first_operand));
+        for(auto operand : following_operands){
+            this->op.push_back("&&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
     }
@@ -366,15 +400,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto is_cmp = dynamic_cast<rx::Parser::ComparisonExpressionContext*>(ctx);
     auto is_cond_cmp = dynamic_cast<rx::Parser::ConditionComparisonExpressionContext*>(ctx);
     auto is_stmt_cmp = dynamic_cast<rx::Parser::StatementComparisonExpressionContext*>(ctx);
+    auto is_cb_cmp = dynamic_cast<rx::Parser::ConditionBreakComparisonExpressionContext*>(ctx);
     if(is_cmp != nullptr){
         if(is_cmp->closedBitOrExpression() != nullptr){
-            this->op = "<";
+            this->op.push_back("<");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cmp->closedBitOrExpression()));
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cmp->bitOrExpression(0)));
         }
         else{
             if(is_cmp->comparisonExceptLt() != nullptr){
-                this->op = is_cmp->comparisonExceptLt()->getText();
+                this->op.push_back(is_cmp->comparisonExceptLt()->getText());
             }
             std::vector<rx::Parser::BitOrExpressionContext*> operands = is_cmp->bitOrExpression();
             for(auto operand : operands){
@@ -384,13 +419,13 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     }
     if(is_cond_cmp != nullptr){
         if(is_cond_cmp->conditionClosedBitOrExpression() != nullptr){
-            this->op = "<";
+            this->op.push_back("<");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cond_cmp->conditionClosedBitOrExpression()));
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cond_cmp->conditionBitOrExpression(0)));
         }
         else{
             if(is_cond_cmp->comparisonExceptLt() != nullptr){
-                this->op = is_cond_cmp->comparisonExceptLt()->getText();
+                this->op.push_back(is_cond_cmp->comparisonExceptLt()->getText());
             }
             std::vector<rx::Parser::ConditionBitOrExpressionContext*> operands = is_cond_cmp->conditionBitOrExpression();
             for(auto operand : operands){
@@ -400,17 +435,33 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     }
     if(is_stmt_cmp != nullptr){
         if(is_stmt_cmp->statementClosedBitOrExpression() != nullptr){
-            this->op = "<";
+            this->op.push_back("<");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_cmp->statementClosedBitOrExpression()));
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_cmp->bitOrExpression()));
         }
         else{
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_cmp->statementBitOrExpression()));
             if(is_stmt_cmp->comparisonExceptLt() != nullptr){
-                this->op = is_stmt_cmp->comparisonExceptLt()->getText();
+                this->op.push_back(is_stmt_cmp->comparisonExceptLt()->getText());
             }
             if(is_stmt_cmp->bitOrExpression() != nullptr){
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_cmp->bitOrExpression()));
+            }
+        }
+    }
+    if(is_cb_cmp != nullptr){
+        if(is_cb_cmp->conditionBreakClosedBitOrExpression() != nullptr){
+            this->op.push_back("<");
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_cmp->conditionBreakClosedBitOrExpression()));
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_cmp->conditionBitOrExpression()));
+        }
+        else{
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_cmp->conditionBreakBitOrExpression()));
+            if(is_cb_cmp->comparisonExceptLt() != nullptr){
+                this->op.push_back(is_cb_cmp->comparisonExceptLt()->getText());
+            }
+            if(is_cb_cmp->conditionBitOrExpression() != nullptr){
+                this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_cmp->conditionBitOrExpression()));
             }
         }
     }
@@ -421,56 +472,84 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto is_cond_closed_bit_or = dynamic_cast<rx::Parser::ConditionClosedBitOrExpressionContext*>(ctx);
     auto is_stmt_bit_or = dynamic_cast<rx::Parser::StatementBitOrExpressionContext*>(ctx);
     auto is_stmt_closed_bit_or = dynamic_cast<rx::Parser::StatementClosedBitOrExpressionContext*>(ctx);
+    auto is_cb_bit_or = dynamic_cast<rx::Parser::ConditionBreakBitOrExpressionContext*>(ctx);
+    auto is_cb_closed_bit_or = dynamic_cast<rx::Parser::ConditionBreakClosedBitOrExpressionContext*>(ctx);
     if(is_bit_or != nullptr){
-        this->op = "|";
         std::vector<rx::Parser::BitXorExpressionContext*> operands = is_bit_or->bitXorExpression();
         for(auto operand : operands){
+            this->op.push_back("|");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_closed_bit_or != nullptr){
-        this->op = "|";
         std::vector<rx::Parser::BitXorExpressionContext*> operands = is_closed_bit_or->bitXorExpression();
         for(auto operand : operands){
+            this->op.push_back("|");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_closed_bit_or->closedBitXorExpression()));
     }
     if(is_cond_bit_or != nullptr){
-        this->op = "|";
         std::vector<rx::Parser::ConditionBitXorExpressionContext*> operands = is_cond_bit_or->conditionBitXorExpression();
         for(auto operand : operands){
+            this->op.push_back("|");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_cond_closed_bit_or != nullptr){
-        this->op = "|";
         std::vector<rx::Parser::ConditionBitXorExpressionContext*> operands = is_cond_closed_bit_or->conditionBitXorExpression();
         for(auto operand : operands){
+            this->op.push_back("|");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cond_closed_bit_or->conditionClosedBitXorExpression()));
     }
     if(is_stmt_bit_or != nullptr){
-        this->op = "|";
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_bit_or->statementBitXorExpression()));
         std::vector<rx::Parser::BitXorExpressionContext*> following_operands = is_stmt_bit_or->bitXorExpression();
         for(auto operand : following_operands){
+            this->op.push_back("|");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
     }
     if(is_stmt_closed_bit_or != nullptr){
-        this->op = "|";
         if(is_stmt_closed_bit_or->statementClosedBitXorExpression() != nullptr){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_or->statementClosedBitXorExpression()));
         }
         else{
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_or->statementBitXorExpression()));
+            this->op.push_back("|");
             std::vector<rx::Parser::BitXorExpressionContext*> following_operands = is_stmt_closed_bit_or->bitXorExpression();
             for(auto operand : following_operands){
+                this->op.push_back("|");
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_or->closedBitXorExpression()));
+        }
+    }
+    if(is_cb_bit_or != nullptr){
+        this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_bit_or->conditionBreakBitXorExpression()));
+        std::vector<rx::Parser::ConditionBitXorExpressionContext*> following_operands = is_cb_bit_or->conditionBitXorExpression();
+        for(auto operand : following_operands){
+            this->op.push_back("|");
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+        }
+    }
+    if(is_cb_closed_bit_or != nullptr){
+        if(is_cb_closed_bit_or->conditionBreakClosedBitXorExpression() != nullptr){
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_or->conditionBreakClosedBitXorExpression()));
+        }
+        else{
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_or->conditionBreakBitXorExpression()));
+            this->op.push_back("|");
+            std::vector<rx::Parser::ConditionBitXorExpressionContext*> following_operands = is_cb_closed_bit_or->conditionBitXorExpression();
+            for(auto operand : following_operands){
+                this->op.push_back("|");
+                this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            }
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_or->conditionClosedBitXorExpression()));
         }
     }
 
@@ -481,56 +560,84 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto is_cond_closed_bit_xor = dynamic_cast<rx::Parser::ConditionClosedBitXorExpressionContext*>(ctx);
     auto is_stmt_bit_xor = dynamic_cast<rx::Parser::StatementBitXorExpressionContext*>(ctx);
     auto is_stmt_closed_bit_xor = dynamic_cast<rx::Parser::StatementClosedBitXorExpressionContext*>(ctx);
+    auto is_cb_bit_xor = dynamic_cast<rx::Parser::ConditionBreakBitXorExpressionContext*>(ctx);
+    auto is_cb_closed_bit_xor = dynamic_cast<rx::Parser::ConditionBreakClosedBitXorExpressionContext*>(ctx);
     if(is_bit_xor != nullptr){
-        this->op = "^";
         std::vector<rx::Parser::BitAndExpressionContext*> operands = is_bit_xor->bitAndExpression();
         for(auto operand : operands){
+            this->op.push_back("^");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_closed_bit_xor != nullptr){
-        this->op = "^";
         std::vector<rx::Parser::BitAndExpressionContext*> operands = is_closed_bit_xor->bitAndExpression();
         for(auto operand : operands){
+            this->op.push_back("^");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_closed_bit_xor->closedBitAndExpression()));
     }
     if(is_cond_bit_xor != nullptr){
-        this->op = "^";
         std::vector<rx::Parser::ConditionBitAndExpressionContext*> operands = is_cond_bit_xor->conditionBitAndExpression();
         for(auto operand : operands){
+            this->op.push_back("^");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_cond_closed_bit_xor != nullptr){
-        this->op = "^";
         std::vector<rx::Parser::ConditionBitAndExpressionContext*> operands = is_cond_closed_bit_xor->conditionBitAndExpression();
         for(auto operand : operands){
+            this->op.push_back("^");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cond_closed_bit_xor->conditionClosedBitAndExpression()));
     }
     if(is_stmt_bit_xor != nullptr){
-        this->op = "^";
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_bit_xor->statementBitAndExpression()));
         std::vector<rx::Parser::BitAndExpressionContext*> following_operands = is_stmt_bit_xor->bitAndExpression();
         for(auto operand : following_operands){
+            this->op.push_back("^");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
     }
     if(is_stmt_closed_bit_xor != nullptr){
-        this->op = "^";
         if(is_stmt_closed_bit_xor->statementClosedBitAndExpression() != nullptr){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_xor->statementClosedBitAndExpression()));
         }
         else{
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_xor->statementBitAndExpression()));
+            this->op.push_back("^");
             std::vector<rx::Parser::BitAndExpressionContext*> following_operands = is_stmt_closed_bit_xor->bitAndExpression();
             for(auto operand : following_operands){
+                this->op.push_back("^");
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_xor->closedBitAndExpression()));
+        }
+    }
+    if(is_cb_bit_xor != nullptr){
+        this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_bit_xor->conditionBreakBitAndExpression()));
+        std::vector<rx::Parser::ConditionBitAndExpressionContext*> following_operands = is_cb_bit_xor->conditionBitAndExpression();
+        for(auto operand : following_operands){
+            this->op.push_back("^");
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+        }
+    }
+    if(is_cb_closed_bit_xor != nullptr){
+        if(is_cb_closed_bit_xor->conditionBreakClosedBitAndExpression() != nullptr){
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_xor->conditionBreakClosedBitAndExpression()));
+        }
+        else{
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_xor->conditionBreakBitAndExpression()));
+            this->op.push_back("^");
+            std::vector<rx::Parser::ConditionBitAndExpressionContext*> following_operands = is_cb_closed_bit_xor->conditionBitAndExpression();
+            for(auto operand : following_operands){
+                this->op.push_back("^");
+                this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            }
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_xor->conditionClosedBitAndExpression()));
         }
     }
 
@@ -541,56 +648,84 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto is_cond_closed_bit_and = dynamic_cast<rx::Parser::ConditionClosedBitAndExpressionContext*>(ctx);
     auto is_stmt_bit_and = dynamic_cast<rx::Parser::StatementBitAndExpressionContext*>(ctx);
     auto is_stmt_closed_bit_and = dynamic_cast<rx::Parser::StatementClosedBitAndExpressionContext*>(ctx);
+    auto is_cb_bit_and = dynamic_cast<rx::Parser::ConditionBreakBitAndExpressionContext*>(ctx);
+    auto is_cb_closed_bit_and = dynamic_cast<rx::Parser::ConditionBreakClosedBitAndExpressionContext*>(ctx);
     if(is_bit_and != nullptr){
-        this->op = "&";
         std::vector<rx::Parser::ShiftExpressionContext*> operands = is_bit_and->shiftExpression();
         for(auto operand : operands){
+            this->op.push_back("&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_closed_bit_and != nullptr){
-        this->op = "&";
         std::vector<rx::Parser::ShiftExpressionContext*> operands = is_closed_bit_and->shiftExpression();
         for(auto operand : operands){
+            this->op.push_back("&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_closed_bit_and->closedShiftExpression()));
     }
     if(is_cond_bit_and != nullptr){
-        this->op = "&";
         std::vector<rx::Parser::ConditionShiftExpressionContext*> operands = is_cond_bit_and->conditionShiftExpression();
         for(auto operand : operands){
+            this->op.push_back("&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
+        this->op.pop_back();
     }
     if(is_cond_closed_bit_and != nullptr){
-        this->op = "&";
         std::vector<rx::Parser::ConditionShiftExpressionContext*> operands = is_cond_closed_bit_and->conditionShiftExpression();
         for(auto operand : operands){
+            this->op.push_back("&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cond_closed_bit_and->conditionClosedShiftExpression()));
     }
     if(is_stmt_bit_and != nullptr){
-        this->op = "&";
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_bit_and->statementShiftExpression()));
         std::vector<rx::Parser::ShiftExpressionContext*> following_operands = is_stmt_bit_and->shiftExpression();
         for(auto operand : following_operands){
+            this->op.push_back("&");
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
     }
     if(is_stmt_closed_bit_and != nullptr){
-        this->op = "&";
         if(is_stmt_closed_bit_and->statementClosedShiftExpression() != nullptr){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_and->statementClosedShiftExpression()));
         }
         else{
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_and->statementShiftExpression()));
+            this->op.push_back("&");
             std::vector<rx::Parser::ShiftExpressionContext*> following_operands = is_stmt_closed_bit_and->shiftExpression();
             for(auto operand : following_operands){
+                this->op.push_back("&");
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_bit_and->closedShiftExpression()));
+        }
+    }
+    if(is_cb_bit_and != nullptr){
+        this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_bit_and->conditionBreakShiftExpression()));
+        std::vector<rx::Parser::ConditionShiftExpressionContext*> following_operands = is_cb_bit_and->conditionShiftExpression();
+        for(auto operand : following_operands){
+            this->op.push_back("&");
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+        }
+    }
+    if(is_cb_closed_bit_and != nullptr){
+        if(is_cb_closed_bit_and->conditionBreakClosedShiftExpression() != nullptr){
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_and->conditionBreakClosedShiftExpression()));
+        }
+        else{
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_and->conditionBreakShiftExpression()));
+            this->op.push_back("&");
+            std::vector<rx::Parser::ConditionShiftExpressionContext*> following_operands = is_cb_closed_bit_and->conditionShiftExpression();
+            for(auto operand : following_operands){
+                this->op.push_back("&");
+                this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            }
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_bit_and->conditionClosedShiftExpression()));
         }
     }
 
@@ -601,6 +736,8 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto is_cond_closed_shift = dynamic_cast<rx::Parser::ConditionClosedShiftExpressionContext*>(ctx);
     auto is_stmt_shift = dynamic_cast<rx::Parser::StatementShiftExpressionContext*>(ctx);
     auto is_stmt_closed_shift = dynamic_cast<rx::Parser::StatementClosedShiftExpressionContext*>(ctx);
+    auto is_cb_shift = dynamic_cast<rx::Parser::ConditionBreakShiftExpressionContext*>(ctx);
+    auto is_cb_closed_shift = dynamic_cast<rx::Parser::ConditionBreakClosedShiftExpressionContext*>(ctx);
     if(is_shift != nullptr){
         // closedAdditiveExpression 与 additiveExpression 在 children 中按出现顺序排列
         for(auto child : is_shift->children){
@@ -609,12 +746,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
                dynamic_cast<rx::Parser::ClosedAdditiveExpressionContext*>(child) != nullptr){
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
-        }
-        if(!is_shift->SHL().empty()){
-            this->op = "<<";
-        }
-        else if(!is_shift->shiftRight().empty()){
-            this->op = ">>";
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
     }
     if(is_closed_shift != nullptr){
@@ -624,12 +765,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
                dynamic_cast<rx::Parser::ClosedAdditiveExpressionContext*>(child) != nullptr){
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
-        }
-        if(!is_closed_shift->SHL().empty()){
-            this->op = "<<";
-        }
-        else if(!is_closed_shift->shiftRight().empty()){
-            this->op = ">>";
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
     }
     if(is_cond_shift != nullptr){
@@ -639,12 +784,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
                dynamic_cast<rx::Parser::ConditionClosedAdditiveExpressionContext*>(child) != nullptr){
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
-        }
-        if(!is_cond_shift->SHL().empty()){
-            this->op = "<<";
-        }
-        else if(!is_cond_shift->shiftRight().empty()){
-            this->op = ">>";
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
     }
     if(is_cond_closed_shift != nullptr){
@@ -654,12 +803,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
                dynamic_cast<rx::Parser::ConditionClosedAdditiveExpressionContext*>(child) != nullptr){
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
-        }
-        if(!is_cond_closed_shift->SHL().empty()){
-            this->op = "<<";
-        }
-        else if(!is_cond_closed_shift->shiftRight().empty()){
-            this->op = ">>";
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
     }
     if(is_stmt_shift != nullptr){
@@ -671,12 +824,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
                dynamic_cast<rx::Parser::ClosedAdditiveExpressionContext*>(child) != nullptr){
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
-        }
-        if(!is_stmt_shift->SHL().empty()){
-            this->op = "<<";
-        }
-        else if(!is_stmt_shift->shiftRight().empty()){
-            this->op = ">>";
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
     }
     if(is_stmt_closed_shift != nullptr){
@@ -688,12 +845,58 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
                dynamic_cast<rx::Parser::ClosedAdditiveExpressionContext*>(child) != nullptr){
                 this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
             }
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
-        if(!is_stmt_closed_shift->SHL().empty()){
-            this->op = "<<";
+    }
+    if(is_cb_shift != nullptr){
+        for(auto child : is_cb_shift->children){
+            auto operand = dynamic_cast<antlr4::ParserRuleContext*>(child);
+            if(dynamic_cast<rx::Parser::ConditionBreakAdditiveExpressionContext*>(child) != nullptr ||
+               dynamic_cast<rx::Parser::ConditionBreakClosedAdditiveExpressionContext*>(child) != nullptr ||
+               dynamic_cast<rx::Parser::ConditionAdditiveExpressionContext*>(child) != nullptr ||
+               dynamic_cast<rx::Parser::ConditionClosedAdditiveExpressionContext*>(child) != nullptr){
+                this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            }
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
-        else if(!is_stmt_closed_shift->shiftRight().empty()){
-            this->op = ">>";
+    }
+    if(is_cb_closed_shift != nullptr){
+        for(auto child : is_cb_closed_shift->children){
+            auto operand = dynamic_cast<antlr4::ParserRuleContext*>(child);
+            if(dynamic_cast<rx::Parser::ConditionBreakAdditiveExpressionContext*>(child) != nullptr ||
+               dynamic_cast<rx::Parser::ConditionBreakClosedAdditiveExpressionContext*>(child) != nullptr ||
+               dynamic_cast<rx::Parser::ConditionAdditiveExpressionContext*>(child) != nullptr ||
+               dynamic_cast<rx::Parser::ConditionClosedAdditiveExpressionContext*>(child) != nullptr){
+                this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            }
+            auto shift_right = dynamic_cast<rx::Parser::ShiftRightContext*>(child);
+            if(shift_right != nullptr){
+                this->op.push_back(">>");
+            }
+            else{
+                auto shift_left = dynamic_cast<antlr4::tree::TerminalNode*>(child);
+                if(shift_left != nullptr && shift_left->getSymbol()->getType() == rx::Parser::SHL){
+                    this->op.push_back("<<");
+                }
+            }
         }
     }
 
@@ -704,13 +907,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
     auto is_cond_closed_add = dynamic_cast<rx::Parser::ConditionClosedAdditiveExpressionContext*>(ctx);
     auto is_stmt_add = dynamic_cast<rx::Parser::StatementAdditiveExpressionContext*>(ctx);
     auto is_stmt_closed_add = dynamic_cast<rx::Parser::StatementClosedAdditiveExpressionContext*>(ctx);
+    auto is_cb_add = dynamic_cast<rx::Parser::ConditionBreakAdditiveExpressionContext*>(ctx);
+    auto is_cb_closed_add = dynamic_cast<rx::Parser::ConditionBreakClosedAdditiveExpressionContext*>(ctx);
     if(is_add != nullptr){
         std::vector<rx::Parser::MultiplicativeExpressionContext*> operands = is_add->multiplicativeExpression();
         for(auto operand : operands){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
-        if(!is_add->additiveOperator().empty()){
-            this->op = is_add->additiveOperator(0)->getText();
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_closed_add != nullptr){
@@ -719,8 +925,9 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_closed_add->closedMultiplicativeExpression()));
-        if(!is_closed_add->additiveOperator().empty()){
-            this->op = is_closed_add->additiveOperator(0)->getText();
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_closed_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_cond_add != nullptr){
@@ -728,8 +935,9 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
         for(auto operand : operands){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
-        if(!is_cond_add->additiveOperator().empty()){
-            this->op = is_cond_add->additiveOperator(0)->getText();
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_cond_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_cond_closed_add != nullptr){
@@ -738,8 +946,9 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
         this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cond_closed_add->conditionClosedMultiplicativeExpression()));
-        if(!is_cond_closed_add->additiveOperator().empty()){
-            this->op = is_cond_closed_add->additiveOperator(0)->getText();
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_cond_closed_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_stmt_add != nullptr){
@@ -748,8 +957,9 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
         for(auto operand : following_operands){
             this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
         }
-        if(!is_stmt_add->additiveOperator().empty()){
-            this->op = is_stmt_add->additiveOperator(0)->getText();
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_stmt_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_stmt_closed_add != nullptr){
@@ -764,91 +974,270 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
             }
             this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_add->closedMultiplicativeExpression()));
         }
-        if(!is_stmt_closed_add->additiveOperator().empty()){
-            this->op = is_stmt_closed_add->additiveOperator(0)->getText();
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_stmt_closed_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
+        }
+    }
+    if(is_cb_add != nullptr){
+        this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_add->conditionBreakMultiplicativeExpression()));
+        std::vector<rx::Parser::ConditionMultiplicativeExpressionContext*> following_operands = is_cb_add->conditionMultiplicativeExpression();
+        for(auto operand : following_operands){
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+        }
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_cb_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
+        }
+    }
+    if(is_cb_closed_add != nullptr){
+        if(is_cb_closed_add->conditionBreakClosedMultiplicativeExpression() != nullptr){
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_add->conditionBreakClosedMultiplicativeExpression()));
+        }
+        else{
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_add->conditionBreakMultiplicativeExpression()));
+            std::vector<rx::Parser::ConditionMultiplicativeExpressionContext*> following_operands = is_cb_closed_add->conditionMultiplicativeExpression();
+            for(auto operand : following_operands){
+                this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            }
+            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cb_closed_add->conditionClosedMultiplicativeExpression()));
+        }
+        std::vector<rx::Parser::AdditiveOperatorContext*> ops = is_cb_closed_add->additiveOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
 
     // Multiplicative
-    auto is_bit_mul = dynamic_cast<rx::Parser::MultiplicativeExpressionContext*>(ctx);
+    auto is_mul = dynamic_cast<rx::Parser::MultiplicativeExpressionContext*>(ctx);
     auto is_closed_mul = dynamic_cast<rx::Parser::ClosedMultiplicativeExpressionContext*>(ctx);
     auto is_cond_mul = dynamic_cast<rx::Parser::ConditionMultiplicativeExpressionContext*>(ctx);
     auto is_cond_closed_mul = dynamic_cast<rx::Parser::ConditionClosedMultiplicativeExpressionContext*>(ctx);
     auto is_stmt_mul = dynamic_cast<rx::Parser::StatementMultiplicativeExpressionContext*>(ctx);
     auto is_stmt_closed_mul = dynamic_cast<rx::Parser::StatementClosedMultiplicativeExpressionContext*>(ctx);
-    if(is_bit_mul != nullptr){
-        std::vector<rx::Parser::CastExpressionContext*> operands = is_bit_mul->castExpression();
+    auto is_cb_mul = dynamic_cast<rx::Parser::ConditionBreakMultiplicativeExpressionContext*>(ctx);
+    auto is_cb_closed_mul = dynamic_cast<rx::Parser::ConditionBreakClosedMultiplicativeExpressionContext*>(ctx);
+    if(is_mul != nullptr){
+        std::vector<rx::Parser::CastExpressionContext*> operands = is_mul->castExpression();
         for(auto operand : operands){
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->operands.push_back(new CastExprNode(CastExpr,operand));
         }
-        if(!is_bit_mul->multiplicativeOperator().empty()){
-            this->op = is_bit_mul->multiplicativeOperator(0)->getText();
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_closed_mul != nullptr){
         std::vector<rx::Parser::CastExpressionContext*> operands = is_closed_mul->castExpression();
         for(auto operand : operands){
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->operands.push_back(new CastExprNode(CastExpr,operand));
         }
-        this->operands.push_back(new BinaryExprNode(BinaryExpr,is_closed_mul->closedCastExpression()));
-        if(!is_closed_mul->multiplicativeOperator().empty()){
-            this->op = is_closed_mul->multiplicativeOperator(0)->getText();
+        this->operands.push_back(new CastExprNode(CastExpr,is_closed_mul->closedCastExpression()));
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_closed_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_cond_mul != nullptr){
         std::vector<rx::Parser::ConditionCastExpressionContext*> operands = is_cond_mul->conditionCastExpression();
         for(auto operand : operands){
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->operands.push_back(new CastExprNode(CastExpr,operand));
         }
-        if(!is_cond_mul->multiplicativeOperator().empty()){
-            this->op = is_cond_mul->multiplicativeOperator(0)->getText();
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_cond_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_cond_closed_mul != nullptr){
         std::vector<rx::Parser::ConditionCastExpressionContext*> operands = is_cond_closed_mul->conditionCastExpression();
         for(auto operand : operands){
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->operands.push_back(new CastExprNode(CastExpr,operand));
         }
-        this->operands.push_back(new BinaryExprNode(BinaryExpr,is_cond_closed_mul->conditionClosedCastExpression()));
-        if(!is_cond_closed_mul->multiplicativeOperator().empty()){
-            this->op = is_cond_closed_mul->multiplicativeOperator(0)->getText();
+        this->operands.push_back(new CastExprNode(CastExpr,is_cond_closed_mul->conditionClosedCastExpression()));
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_cond_closed_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_stmt_mul != nullptr){
-        this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_mul->statementCastExpression()));
+        this->operands.push_back(new CastExprNode(CastExpr,is_stmt_mul->statementCastExpression()));
         std::vector<rx::Parser::CastExpressionContext*> following_operands = is_stmt_mul->castExpression();
         for(auto operand : following_operands){
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+            this->operands.push_back(new CastExprNode(CastExpr,operand));
         }
-        if(!is_stmt_mul->multiplicativeOperator().empty()){
-            this->op = is_stmt_mul->multiplicativeOperator(0)->getText();
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_stmt_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
     if(is_stmt_closed_mul != nullptr){
         if(is_stmt_closed_mul->statementClosedCastExpression() != nullptr){
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_mul->statementClosedCastExpression()));
+            this->operands.push_back(new CastExprNode(CastExpr,is_stmt_closed_mul->statementClosedCastExpression()));
         }
         else{
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_mul->statementCastExpression()));
+            this->operands.push_back(new CastExprNode(CastExpr,is_stmt_closed_mul->statementCastExpression()));
             std::vector<rx::Parser::CastExpressionContext*> following_operands = is_stmt_closed_mul->castExpression();
             for(auto operand : following_operands){
-                this->operands.push_back(new BinaryExprNode(BinaryExpr,operand));
+                this->operands.push_back(new CastExprNode(CastExpr,operand));
             }
-            this->operands.push_back(new BinaryExprNode(BinaryExpr,is_stmt_closed_mul->closedCastExpression()));
+            this->operands.push_back(new CastExprNode(CastExpr,is_stmt_closed_mul->closedCastExpression()));
         }
-        if(!is_stmt_closed_mul->multiplicativeOperator().empty()){
-            this->op = is_stmt_closed_mul->multiplicativeOperator(0)->getText();
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_stmt_closed_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
+        }
+    }
+    if(is_cb_mul != nullptr){
+        this->operands.push_back(new CastExprNode(CastExpr,is_cb_mul->conditionBreakCastExpression()));
+        std::vector<rx::Parser::ConditionCastExpressionContext*> following_operands = is_cb_mul->conditionCastExpression();
+        for(auto operand : following_operands){
+            this->operands.push_back(new CastExprNode(CastExpr,operand));
+        }
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_cb_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
+        }
+    }
+    if(is_cb_closed_mul != nullptr){
+        if(is_cb_closed_mul->conditionBreakClosedCastExpression() != nullptr){
+            this->operands.push_back(new CastExprNode(CastExpr,is_cb_closed_mul->conditionBreakClosedCastExpression()));
+        }
+        else{
+            this->operands.push_back(new CastExprNode(CastExpr,is_cb_closed_mul->conditionBreakCastExpression()));
+            std::vector<rx::Parser::ConditionCastExpressionContext*> following_operands = is_cb_closed_mul->conditionCastExpression();
+            for(auto operand : following_operands){
+                this->operands.push_back(new CastExprNode(CastExpr,operand));
+            }
+            this->operands.push_back(new CastExprNode(CastExpr,is_cb_closed_mul->conditionClosedCastExpression()));
+        }
+        std::vector<rx::Parser::MultiplicativeOperatorContext*> ops = is_cb_closed_mul->multiplicativeOperator();
+        for(auto op : ops){
+            this->op.push_back(op->getText());
         }
     }
 }
 PathExprNode::PathExprNode(const ASTNodeType kind_) : ASTNode(kind_) {
 
 }
-UnaryExprNode::UnaryExprNode(const ASTNodeType kind_) : ASTNode(kind_) {
-
+UnaryExprNode::UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx) : ASTNode(kind_) {
+    auto is_unary = dynamic_cast<rx::Parser::UnaryExpressionContext*>(ctx);
+    auto is_cond_unary = dynamic_cast<rx::Parser::ConditionUnaryExpressionContext*>(ctx);
+    auto is_stmt_unary = dynamic_cast<rx::Parser::StatementUnaryExpressionContext*>(ctx);
+    auto is_cb_unary = dynamic_cast<rx::Parser::ConditionBreakUnaryExpressionContext*>(ctx);
+    if(is_unary != nullptr){
+        if(is_unary->unaryOperator() != nullptr){
+            this->op = is_unary->unaryOperator()->getText();
+            this->expr = new UnaryExprNode(UnaryExpr,is_unary->unaryExpression());
+        }
+        else{
+            // PostfixExpression
+        }
+    }
+    if(is_cond_unary != nullptr){
+        if(is_cond_unary->unaryOperator() != nullptr){
+            this->op = is_cond_unary->unaryOperator()->getText();
+            this->expr = new UnaryExprNode(UnaryExpr,is_cond_unary->conditionUnaryExpression());
+        }
+        else{
+            // ConditionPostfixExpression
+        }
+    }
+    if(is_stmt_unary != nullptr){
+        if(is_stmt_unary->unaryOperator() != nullptr){
+            this->op = is_stmt_unary->unaryOperator()->getText();
+            this->expr = new UnaryExprNode(UnaryExpr,is_stmt_unary->unaryExpression());
+        }
+        else{
+            // StatementPosfixExpression
+        }
+    }
+    if(is_cb_unary != nullptr){
+        if(is_cb_unary->unaryOperator() != nullptr){
+            this->op = is_cb_unary->unaryOperator()->getText();
+            this->expr = new UnaryExprNode(UnaryExpr,is_cb_unary->conditionUnaryExpression());
+        }
+        else{
+            // ConditionBreakPostfixExpression
+        }
+    }
 }
-CastExprNode::CastExprNode(const ASTNodeType kind_) : ASTNode(kind_) {
-
+CastExprNode::CastExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx) : ASTNode(kind_) {
+    auto is_cast = dynamic_cast<rx::Parser::CastExpressionContext*>(ctx);
+    auto is_closed_cast = dynamic_cast<rx::Parser::ClosedCastExpressionContext*>(ctx);
+    auto is_cond_cast = dynamic_cast<rx::Parser::ConditionCastExpressionContext*>(ctx);
+    auto is_cond_closed_cast = dynamic_cast<rx::Parser::ConditionClosedCastExpressionContext*>(ctx);
+    auto is_stmt_cast = dynamic_cast<rx::Parser::StatementCastExpressionContext*>(ctx);
+    auto is_stmt_closed_cast = dynamic_cast<rx::Parser::StatementClosedCastExpressionContext*>(ctx);
+    auto is_cb_cast = dynamic_cast<rx::Parser::ConditionBreakCastExpressionContext*>(ctx);
+    auto is_cb_closed_cast = dynamic_cast<rx::Parser::ConditionBreakClosedCastExpressionContext*>(ctx);
+    if(is_cast != nullptr){
+        this->expr = new UnaryExprNode(UnaryExpr,is_cast->unaryExpression());
+        std::vector<rx::Parser::TypeRefContext*> types = is_cast->typeRef();
+        for(auto type : types){
+            this->types.push_back(CheckType(type));
+        }
+    }
+    if(is_closed_cast != nullptr){
+        if(is_closed_cast->unaryExpression() != nullptr){
+            this->expr = new UnaryExprNode(UnaryExpr,is_closed_cast->unaryExpression());
+        }
+        else{
+            this->expr = new CastExprNode(CastExpr,is_closed_cast->castExpression());
+            auto type_ptr = is_closed_cast->closedCastType();
+            // TODO 还没处理CloseCastType
+        }
+    }
+    if(is_cond_cast != nullptr){
+        this->expr = new UnaryExprNode(UnaryExpr,is_cond_cast->conditionUnaryExpression());
+        std::vector<rx::Parser::TypeRefContext*> types = is_cond_cast->typeRef();
+        for(auto type : types){
+            this->types.push_back(CheckType(type));
+        }
+    }
+    if(is_cond_closed_cast != nullptr){
+        if(is_cond_closed_cast->conditionUnaryExpression() != nullptr){
+            this->expr = new UnaryExprNode(UnaryExpr,is_cond_closed_cast->conditionUnaryExpression());
+        }
+        else{
+            this->expr = new CastExprNode(CastExpr,is_cond_closed_cast->conditionCastExpression());
+            auto type_ptr = is_cond_closed_cast->closedCastType();
+            // TODO
+        }
+    }
+    if(is_stmt_cast != nullptr){
+        this->expr = new UnaryExprNode(UnaryExpr,is_stmt_cast->statementUnaryExpression());
+        std::vector<rx::Parser::TypeRefContext*> types = is_stmt_cast->typeRef();
+        for(auto type : types){
+            this->types.push_back(CheckType(type));
+        }
+    }
+    if(is_stmt_closed_cast != nullptr){
+        if(is_stmt_closed_cast->statementUnaryExpression() != nullptr){
+            this->expr = new UnaryExprNode(UnaryExpr,is_stmt_closed_cast->statementUnaryExpression());
+        }
+        else{
+            this->expr = new CastExprNode(CastExpr,is_stmt_closed_cast->statementCastExpression());
+            auto type_ptr = is_stmt_closed_cast->closedCastType();
+            // TODO
+        }
+    }
+    if(is_cb_cast != nullptr){
+        this->expr = new UnaryExprNode(UnaryExpr,is_cb_cast->conditionBreakUnaryExpression());
+        std::vector<rx::Parser::TypeRefContext*> types = is_cb_cast->typeRef();
+        for(auto type : types){
+            this->types.push_back(CheckType(type));
+        }
+    }
+    if(is_cb_closed_cast != nullptr){
+        if(is_cb_closed_cast->conditionBreakUnaryExpression() != nullptr){
+            this->expr = new UnaryExprNode(UnaryExpr,is_cb_closed_cast->conditionBreakUnaryExpression());
+        }
+        else{
+            this->expr = new CastExprNode(CastExpr,is_cb_closed_cast->conditionBreakCastExpression());
+            auto type_ptr = is_cb_closed_cast->closedCastType();
+            // TODO
+        }
+    }
 }
 // types
 RefTypeNode::RefTypeNode(const ASTNodeType kind_,rx::Parser::ReferenceTypeContext* ctx) : ASTNode(kind_) {
