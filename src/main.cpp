@@ -25,9 +25,10 @@ int main(int argc, char** argv) {
     rx::Parser parser(&tokens);
 
     rx::Parser::CrateContext* tree = parser.crate(); // build CST
+    if(parser.getNumberOfSyntaxErrors() > 0) return 1;
     CrateNode* ASTtree = new CrateNode(Crate,tree); // build AST
 
     // SEMANTIC 约定：退出 0 = 接受，退出 1 = 拒绝。
-    // 目前只做到语法层面；语义检查写好后在这里汇总错误。
-    return parser.getNumberOfSyntaxErrors() == 0 ? 0 : 1;
+    delete ASTtree;
+    return 0;
 }
