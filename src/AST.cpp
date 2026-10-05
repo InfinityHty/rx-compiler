@@ -171,6 +171,13 @@ StructItemNode::StructItemNode(const ASTNodeType kind_,rx::Parser::StructDefinit
         StructFieldNode* field_ptr = new StructFieldNode(StructField,field);
         this->structField.push_back(field_ptr);
     }
+    auto attributes = ctx->outerAttribute();
+    for(auto attribute : attributes){
+        auto derives = attribute->deriveName();
+        for(auto derive : derives){
+            this->derives.push_back(derive->getText());
+        }
+    }
 }
 ConstItemNode::ConstItemNode(const ASTNodeType kind_,rx::Parser::ConstantItemContext* ctx) : ASTNode(kind_) {
     this->name = ctx->identifier()->getText();

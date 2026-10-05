@@ -63,6 +63,7 @@ class StructItemNode : public ASTNode {
 public:
     std::string name; // 结构体名
     std::vector<ASTNode*> structField; // 结构体里的内容
+    std::vector<std::string> derives;
     StructItemNode(const ASTNodeType kind_,rx::Parser::StructDefinitionContext* ctx);
     ~StructItemNode(){
         for(auto field : structField){

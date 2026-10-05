@@ -3,6 +3,7 @@
 #include "ANTLRFileStream.h"
 #include "CommonTokenStream.h"
 #include "AST.h"
+#include "Semantic.h"
 
 #include <iostream>
 
@@ -27,8 +28,12 @@ int main(int argc, char** argv) {
     rx::Parser::CrateContext* tree = parser.crate(); // build CST
     if(parser.getNumberOfSyntaxErrors() > 0) return 1;
     CrateNode* ASTtree = new CrateNode(Crate,tree); // build AST
-
-    // SEMANTIC 约定：退出 0 = 接受，退出 1 = 拒绝。
+    SemanticCheck checker;
+    if(checker.hasSemanticError(ASTtree)){
+        delete ASTtree;
+        return 1;
+    }
+    // SEMANTIC check：0 = Accept，1 = Reject。
     delete ASTtree;
     return 0;
 }
