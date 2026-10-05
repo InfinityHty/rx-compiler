@@ -28,15 +28,16 @@ private:
     // Tools
     bool IsTypeEqual(const TypeInfo& a,const TypeInfo& b);
     TypeInfo* GetTypeInfo(ASTNode* node);
+    TypeInfo* GetSelfTypeInfo(ASTNode* node,std::string struct_name);
     bool IsBuiltIn(std::string name);
     Derived StringToDerived(std::string);
     struct Symbol{
-        TypeInfo type;
+        TypeInfo* type;
         bool is_const = false; // 是不是const
         bool mut = false; // 是否可变
     };
     struct FunctionInfo{
-        std::vector<TypeInfo*> params; // 参数类型
+        std::vector<Symbol*> params; // 参数类型
         TypeInfo* return_type = nullptr; // 返回类型
     };
     std::unordered_map<std::string,FunctionInfo*> functions_table; // 全局函数表
