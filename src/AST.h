@@ -123,8 +123,8 @@ public:
 // expr
 class IntLitNode : public ASTNode {
 public:
-    uint64_t value;
-    std::string suffix;
+    long long value;
+    std::string suffix; // 默认
     IntLitNode(const ASTNodeType kind_,std::string value_);
 };
 class BoolLitNode : public ASTNode {
@@ -186,6 +186,7 @@ class BinaryExprNode : public ASTNode {
 public:
     std::vector<ASTNode*> operands;
     std::vector<std::string> op;
+    int level; // 0~8: || && == | ^ & << + *
     BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
     ~BinaryExprNode(){
         for(auto operand : operands){

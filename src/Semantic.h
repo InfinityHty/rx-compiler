@@ -14,30 +14,36 @@ private:
     struct ConstantInfo;
     struct FunctionInfo;
     // 保留的关键字
-    std::vector<std::string> builtin_names = {"i32","u32","isize","usize", "bool", "Box", "self", "Self",
-        "Vec", "Copy", "Clone", "PartialEq", "Eq","get_i32", "print_i32", "println_i32"};
+    // Type和Value是两个不同的namespace
+    std::vector<std::string> builtin_types = {"i32","u32","isize","usize", "bool", "Box", "Vec", "Copy", "Clone", "PartialEq", "Eq"};
+    std::vector<std::string> builtin_values = {"get_i32", "print_i32", "println_i32"};
     enum Derived {Copy,Clone,PartialEq,Eq,Other}; // 支持的Trait
+
     struct TypeInfo{
         enum Kind{I32,U32,Usize,Isize,Bool,Box,Vec,Unit,Struct,Array,Ref,Never,Unknown};
         Kind kind = Unknown;
         std::string name; // Struct名
-        TypeInfo* element = nullptr; // Array元素/Ref拆掉&后的内容
-        uint64_t length; // Array长度
+        TypeInfo* element = nullptr; // Array元素/Ref拆掉&后的内容/Vec包裹的内容/Box包裹的内容
+        long long length = 0; // Array长度
         bool is_mut = false; // Ref类是不是可变引用 &mut i32 
     };
+
     // Tools
     bool IsTypeEqual(const TypeInfo& a,const TypeInfo& b);
     TypeInfo* GetTypeInfo(ASTNode* node);
     TypeInfo* GetSelfTypeInfo(ASTNode* node,std::string struct_name);
-    bool IsBuiltIn(std::string name);
+    bool CanWrite(ASTNode* node);
+    bool IsBuiltInTypes(std::string name);
+    bool IsBuiltInValues(std::string name);
     Derived StringToDerived(std::string);
+
     struct Symbol{
-        TypeInfo* type;
+        TypeInfo* type = nullptr;
         bool is_const = false; // 是不是const
         bool mut = false; // 是否可变
     };
     struct FunctionInfo{
-        std::vector<Symbol*> params; // 参数类型
+        std::vector<std::pair<std::string,Symbol*>> params; // 参数 要按顺序
         TypeInfo* return_type = nullptr; // 返回类型
     };
     std::unordered_map<std::string,FunctionInfo*> functions_table; // 全局函数表
@@ -50,18 +56,74 @@ private:
     std::unordered_map<std::string,StructInfo*> structs_table; // 全局结构体表
     struct ConstantInfo{
         TypeInfo* type;
-        std::any value; // 这里应该怎么存const的值？
+        long long int_value;
+        bool bool_value;
     };
     std::unordered_map<std::string,ConstantInfo*> constants_table; // 全局常量表
+    // scopes and shadowing
+    std::vector<std::unordered_map<std::string,Symbol*>> scopes; // 作用域
+    std::unordered_map<std::string,Symbol*> top_params;
+    int layer = -1;
+    // loop 
+    struct LoopInfo{
+        bool is_loop = false;
+        std::vector<TypeInfo> exit_types;
+    };
+    std::vector<LoopInfo> loop_stacks; // 专门记录目前的循环嵌套情况
 
-    std::vector<std::unordered_map<std::string,Symbol>> scopes; // 作用域
     bool error = false;
     // dispatch
     void Visit(ASTNode* node);
+    TypeInfo VisitAndGetType(ASTNode* node);
     // branch
     void VisitCrate(CrateNode* node);
+    // items
     void VisitFnItem(FnItemNode* node);
     void VisitStructItem(StructItemNode* node);
     void VisitConstItem(ConstItemNode* node);
     void VisitImplItem(ImplItemNode* node);
+    // statements
+    void VisitLetStmt(LetStmtNode* node);
+    void VisitExprStmt(ExprStmtNode* node);
+    // expressions
+    TypeInfo VisitIntLit(IntLitNode* node);
+    TypeInfo VisitBoolLit(BoolLitNode* node);
+    TypeInfo VisitPathExpr(PathExprNode* node);
+    TypeInfo VisitStructExpr(StructExprNode* node);
+    TypeInfo VisitArrayExpr(ArrayExprNode* node);
+    TypeInfo VisitArrayRepeat(ArrayRepeatNode* node);
+    TypeInfo VisitUnaryExpr(UnaryExprNode* node);
+    TypeInfo VisitBinaryExpr(BinaryExprNode* node);
+    TypeInfo VisitAssignExpr(AssignExprNode* node);
+    TypeInfo VisitCastExpr(CastExprNode* node);
+    TypeInfo VisitCallExpr(CallExprNode* node);
+    TypeInfo VisitMethodCallExpr(MethodCallExprNode* node);
+    TypeInfo VisitFieldExpr(FieldExprNode* node);
+    TypeInfo VisitIndexExpr(IndexExprNode* node);
+    TypeInfo VisitBlockExpr(BlockExprNode* node);
+    TypeInfo VisitIfExpr(IfExprNode* node);
+    TypeInfo VisitLoopExpr(LoopExprNode* node);
+    TypeInfo VisitWhileExpr(WhileExprNode* node);
+    TypeInfo VisitBreakExpr(BreakExprNode* node);
+    TypeInfo VisitContinueExpr(ContinueExprNode* node);
+    TypeInfo VisitReturnExpr(ReturnExprNode* node);
+    // type
+    TypeInfo VisitUnitType(UnitTypeNode* node);
+    TypeInfo VisitPathType(PathTypeNode* node);
+    TypeInfo VisitRefType(RefTypeNode* node);
+    TypeInfo VisitArrayType(ArrayTypeNode* node);
 };
+
+// Crate, FnItem, StructItem, ConstItem, ImplItem, /*UseItem,*/
+//     // statements
+//     LetStmt, ExprStmt,
+//     // expressions
+//     IntLit, BoolLit, PathExpr, StructExpr, ArrayExpr, ArrayRepeat,
+//     UnaryExpr, BinaryExpr, AssignExpr, CastExpr,
+//     CallExpr, MethodCallExpr, FieldExpr, IndexExpr,
+//     BlockExpr, IfExpr, LoopExpr, WhileExpr,
+//     BreakExpr, ContinueExpr, ReturnExpr,
+//     // types
+//     UnitType, PathType, RefType, ArrayType,
+//     // others
+//     FnSelfParam,FnParam, StructField,
