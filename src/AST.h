@@ -3,6 +3,7 @@
 #include "Lexer.h"
 #include "Parser.h"
 #include <vector>
+#include <memory>
 
 enum ASTNodeType {
      // items
@@ -49,6 +50,7 @@ public:
     ASTNode* blockExpr = nullptr; // 函数体
     ASTNode* returnType = nullptr; // 返回类型
     std::vector<ASTNode*> parameters; // 函数参数
+    bool has_generic = false;
     FnItemNode(const ASTNodeType kind_,rx::Parser::FunctionDefinitionContext* ctx);
     ~FnItemNode(){
         if(blockExpr) delete blockExpr;

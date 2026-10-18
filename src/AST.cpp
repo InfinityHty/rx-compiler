@@ -150,6 +150,7 @@ CrateNode::CrateNode(const ASTNodeType kind_, rx::Parser::CrateContext* ctx) : A
 FnItemNode::FnItemNode(const ASTNodeType kind_,rx::Parser::FunctionDefinitionContext* ctx) : ASTNode(kind_) {
     this->name = ctx->identifier()->getText();
     this->blockExpr = new BlockExprNode(BlockExpr,ctx->blockExpression());
+    if(ctx->genericParams()) this->has_generic = true;
     rx::Parser::TypeRefContext* return_type = ctx->typeRef();
     if(return_type != nullptr){
         this->returnType = CheckType(return_type);

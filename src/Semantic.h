@@ -32,10 +32,22 @@ private:
     bool IsTypeEqual(const TypeInfo& a,const TypeInfo& b);
     TypeInfo* GetTypeInfo(ASTNode* node);
     TypeInfo* GetSelfTypeInfo(ASTNode* node,std::string struct_name);
-    bool CanWrite(ASTNode* node);
-    bool IsBuiltInTypes(std::string name);
+    struct PlaceInfo{
+        TypeInfo type;
+        bool can_write = false; // 能不能改本身
+        bool can_mutate_contents = false; // 能不能改内容
+        // bool can_use_for_mutation = false;
+    };
+    PlaceInfo AnalyzePlace(ASTNode* node);
+    PlaceInfo DereferencePlace(const PlaceInfo& base);
+    bool CanWrite(ASTNode* node); // 能否作为左值
+    bool IsBuiltInTypes(std::string name); // 检查是否和关键字冲突
     bool IsBuiltInValues(std::string name);
-    Derived StringToDerived(std::string);
+    Derived StringToDerived(std::string); // 字符串转换成Derived
+    bool CheckDerivedTrait(std::set<Derived> &derived,TypeInfo* &field); // 检查struct里的field是否都满足trait
+    bool CheckRecursiveField(std::set<std::string> &type_list,TypeInfo* type);
+    bool CheckRecursiveConst(const std::vector<std::string> &begin,std::vector<std::string> &cur); // 检查const的路径是否合法
+
 
     struct Symbol{
         TypeInfo* type = nullptr;
@@ -45,6 +57,7 @@ private:
     struct FunctionInfo{
         std::vector<std::pair<std::string,Symbol*>> params; // 参数 要按顺序
         TypeInfo* return_type = nullptr; // 返回类型
+        bool has_generic = false;
     };
     std::unordered_map<std::string,FunctionInfo*> functions_table; // 全局函数表
     struct StructInfo{
@@ -58,6 +71,7 @@ private:
         TypeInfo* type;
         long long int_value;
         bool bool_value;
+        std::vector<std::string> path_value{};
     };
     std::unordered_map<std::string,ConstantInfo*> constants_table; // 全局常量表
     // scopes and shadowing

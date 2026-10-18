@@ -6,6 +6,7 @@ bool SemanticCheck::hasSemanticError(CrateNode* node){
         if(item->kind == FnItem){
             FnItemNode* child_node = static_cast<FnItemNode*>(item);
             FunctionInfo* func = new FunctionInfo;
+            if(child_node->has_generic) func->has_generic = true;
             for(auto param : child_node->parameters){
                 if(param->kind == FnParam){
                     auto fn_param_node = static_cast<FnParamNode*>(param);
@@ -74,7 +75,9 @@ bool SemanticCheck::hasSemanticError(CrateNode* node){
                 std::pair<std::string,TypeInfo*> field_;
                 field_.first = static_cast<StructFieldNode*>(field)->name;
                 field_.second = GetTypeInfo(static_cast<StructFieldNode*>(field)->type);
+                // field 的类型检查放在全部扫描完一遍之后
                 if(field_.second->kind == TypeInfo::Unknown) return true; // 未知类型
+                
                 if(struc->fields.find(field_.first) != struc->fields.end()){
                     return true; // struct里有重复field名
                 }
@@ -116,7 +119,11 @@ bool SemanticCheck::hasSemanticError(CrateNode* node){
                 if(const_info->type->kind != TypeInfo::Bool) return true; // 类型不匹配
                 const_info->bool_value = static_cast<BoolLitNode*>(child_node->value)->value;
             }
-
+            else if(child_node->value->kind == PathExpr){
+                // 常量表达式是路径
+                const_info->path_value = static_cast<PathExprNode*>(child_node->value)->segments;
+            }
+            // 检查命名合法性
             if(constants_table.find(child_node->name) != constants_table.end()){
                 return true; // 重复常量名
             }
@@ -223,6 +230,10 @@ bool SemanticCheck::hasSemanticError(CrateNode* node){
                         else if(const_ptr->value->kind == BoolLit){
                             const_in_struct->bool_value = static_cast<BoolLitNode*>(const_ptr->value)->value;
                         }
+                        else if(const_ptr->value->kind == PathExpr){
+                            const_in_struct->path_value = static_cast<PathExprNode*>(const_ptr->value)->segments;
+                        }
+
                         struct_info->consts[const_ptr->name] = const_in_struct;
                         structs_table[target_type_name] = struct_info; // 更新
                     }
@@ -241,6 +252,9 @@ bool SemanticCheck::hasSemanticError(CrateNode* node){
             }
             if(it->second->return_type != nullptr && it->second->return_type->kind != TypeInfo::Unit){
                 return true; // main函数返回值不是nullptr或者Unit
+            }
+            if(it->second->has_generic){
+                return true; // main不能有泛型参数
             }
         }
         if(constants_table.find(it->first) != constants_table.end()){
@@ -262,10 +276,44 @@ bool SemanticCheck::hasSemanticError(CrateNode* node){
             }
         }
     }
+
     for(auto it = constants_table.begin(); it != constants_table.end(); it++){
         if(it->second->type->kind == TypeInfo::Struct){
             if(structs_table.find(it->second->type->name) == structs_table.end()){
                 return true; // 未定义Type
+            }
+        }
+        if(it->second->path_value.size() > 0){
+            // 检查path的合法性 是否存在循环
+            std::vector<std::string> beg{};
+            beg.push_back(it->first);
+            if(!CheckRecursiveConst(beg,beg)) return true;
+        }
+    }
+
+    for(auto it = structs_table.begin(); it != structs_table.end(); it++){
+        auto fields = it->second->fields;
+        std::set<std::string> type_list{};
+        for(auto it2 = fields.begin(); it2 != fields.end(); it2++){
+            // field里的类型和trait相对应的检查
+            if(it2->second->kind == TypeInfo::Struct){
+                // 检查这个类型是否存在
+                if(structs_table.find(it2->second->name) == structs_table.end()){
+                    // 不存在
+                    return true;
+                }
+                // TODO 检查是否存在类型循环
+            }
+            if(!CheckDerivedTrait(it->second->derived,it2->second)) return true;
+        }
+        auto consts = it->second->consts;
+        for(auto const_ : consts){
+            if(const_.second->path_value.size() > 0){
+                // 是path类型的常量值 检查这个path是否合法
+                std::vector<std::string> beg{};
+                beg.push_back(it->first);
+                beg.push_back(const_.first);
+                if(!CheckRecursiveConst(beg,beg)) return true;
             }
         }
     }
@@ -304,6 +352,13 @@ SemanticCheck::TypeInfo SemanticCheck::VisitAndGetType(ASTNode* node){
         case WhileExpr: return VisitWhileExpr(static_cast<WhileExprNode*>(node));
         case BreakExpr: return VisitBreakExpr(static_cast<BreakExprNode*>(node));
         case ContinueExpr: return VisitContinueExpr(static_cast<ContinueExprNode*>(node));
+        case UnaryExpr: return VisitUnaryExpr(static_cast<UnaryExprNode*>(node));
+        case CastExpr: return VisitCastExpr(static_cast<CastExprNode*>(node));
+        // types
+        case UnitType: return VisitUnitType(static_cast<UnitTypeNode*>(node));
+        case PathType: return VisitPathType(static_cast<PathTypeNode*>(node));
+        case ArrayType: return VisitArrayType(static_cast<ArrayTypeNode*>(node));
+        case RefType: return VisitRefType(static_cast<RefTypeNode*>(node));
         // // others
         // case FnSelfParam:
         // case FnParam:
@@ -518,6 +573,12 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
         return type;
     }
 }
+SemanticCheck::TypeInfo SemanticCheck::VisitUnaryExpr(UnaryExprNode* node){
+
+}
+SemanticCheck::TypeInfo SemanticCheck::VisitCastExpr(CastExprNode* node){
+
+}
 SemanticCheck::TypeInfo SemanticCheck::VisitIfExpr(IfExprNode* node){
     TypeInfo condition = VisitAndGetType(node->condition);
     if(condition.kind != TypeInfo::Bool) error = true;
@@ -564,6 +625,51 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBreakExpr(BreakExprNode* node){
 SemanticCheck::TypeInfo SemanticCheck::VisitContinueExpr(ContinueExprNode* node){
     TypeInfo type;
     type.kind = TypeInfo::Unit;
+    return type;
+}
+// types
+SemanticCheck::TypeInfo SemanticCheck::VisitUnitType(UnitTypeNode* node){
+    TypeInfo type;
+    type.kind = TypeInfo::Unit;
+    return type;
+}
+SemanticCheck::TypeInfo SemanticCheck::VisitPathType(PathTypeNode* node){
+    // 倒序遍历scopes
+    TypeInfo type;
+    if(node->segments.size() == 1){
+        std::string name = node->segments[0];
+        bool has_name = false;
+        Symbol* symbol;
+        for(auto it = scopes.rbegin(); it != scopes.rend(); it++){
+            if(it->find(name) != it->end()){
+                has_name = true;
+                symbol = (*it)[name];
+                break;
+            }
+        }
+        if(!has_name){
+            error = true;
+            return type;
+        }
+        return *symbol->type;
+    }
+    return type;
+}
+SemanticCheck::TypeInfo SemanticCheck::VisitArrayType(ArrayTypeNode* node){
+    TypeInfo type,element;
+    type.kind = TypeInfo::Array;
+    // length 这里如何计算
+    element = VisitAndGetType(node->type);
+    type.element = new TypeInfo;
+    *type.element = element;
+    return type;
+}
+SemanticCheck::TypeInfo SemanticCheck::VisitRefType(RefTypeNode* node){
+    TypeInfo type;
+    type.kind = TypeInfo::Ref;
+    if(node->mut) type.is_mut = true;
+    type.element = new TypeInfo;
+    *type.element = VisitAndGetType(node->type);
     return type;
 }
 // Tools
@@ -694,73 +800,213 @@ bool SemanticCheck::IsTypeEqual(const TypeInfo& a, const TypeInfo& b){
     }
     return true;
 }
+// kimi修改版：
+// 可以作为左值的expression：路径，解引用，struct字段，index
 bool SemanticCheck::CanWrite(ASTNode* node){
-    // 用于判断合法Assign Destination
-    Symbol symbol;
-    while(node->kind == BinaryExpr){
-        auto binary_ptr = static_cast<BinaryExprNode*>(node);
-        if(binary_ptr->operands.size() > 1){
-            error = true; // 左值是表达式 不合法
+    return AnalyzePlace(node).can_write;
+}
+// 解引用
+SemanticCheck::PlaceInfo SemanticCheck::DereferencePlace(const PlaceInfo& base){
+    PlaceInfo result;
+    if(base.type.element == nullptr) return result;
+    if(base.type.kind == TypeInfo::Ref){
+        result.type = *base.type.element;
+        if(base.type.is_mut){
+            // 是可变引用
+            result.can_write = true;
+            result.can_mutate_contents = true;
         }
-        node = binary_ptr->operands[0];
     }
-    if(node->kind == CastExpr){
-        auto cast_ptr = static_cast<CastExprNode*>(node);
-        if(cast_ptr->types.size() > 0){
-            error = true; // 左值cast
+    else if(base.type.kind == TypeInfo::Box){
+        result.type = *base.type.element;
+        result.can_write = base.can_mutate_contents;
+        result.can_mutate_contents = base.can_mutate_contents;
+    }
+    return result;
+}
+SemanticCheck::PlaceInfo SemanticCheck::AnalyzePlace(ASTNode* node){
+    PlaceInfo result;
+    // 解开AST里的多层封装
+    while(node != nullptr){
+        if(node->kind == BinaryExpr){
+            auto binary = static_cast<BinaryExprNode*>(node);
+            if(binary->operands.empty()) return result;
+            if(binary->operands.size() > 1) break;
+            node = binary->operands[0];
+            continue;
         }
-        node = cast_ptr->expr;
+        if(node->kind == CastExpr){
+            auto cast = static_cast<CastExprNode*>(node);
+            if(!cast->types.empty()) break;
+            node = cast->expr;
+            continue;
+        }
+        if(node->kind == UnaryExpr){
+            auto unary = static_cast<UnaryExprNode*>(node);
+            if(!unary->op.empty()) break;
+            node = unary->expr;
+            continue;
+        }
+        if(node->kind == AssignExpr){
+            auto assign = static_cast<AssignExprNode*>(node);
+            if(assign->right != nullptr) break;
+            node = assign->left;
+            continue;
+        }
+        break;
+    }
+    if(node == nullptr) return result;
+    if(node->kind == PathExpr){
+        // 最底层
+        auto path = static_cast<PathExprNode*>(node);
+        if(path->segments.size() != 1) return result;
+        const std::string& name = path->segments[0];
+        Symbol* symbol = nullptr;
+        for(auto it = scopes.rbegin(); it != scopes.rend(); ++it){
+            auto found = it->find(name);
+            if(found != it->end()){
+                symbol = found->second;
+                break;
+            }
+        }
+        if(symbol == nullptr){
+            auto found = top_params.find(name);
+            if(found != top_params.end()) symbol = found->second;
+        }
+        if(symbol == nullptr || symbol->type == nullptr) return result; // 不存在
+        result.type = *symbol->type;
+        result.can_write = symbol->mut && !symbol->is_const;
+        result.can_mutate_contents = result.can_write;
+        return result;
     }
     else if(node->kind == UnaryExpr){
-        auto unary_ptr = static_cast<UnaryExprNode*>(node);
-        if(unary_ptr->op.size() > 0){
-            error = true; // 左值带符号
+        auto unary = static_cast<UnaryExprNode*>(node);
+        if(unary->op == "*"){
+            return DereferencePlace(AnalyzePlace(unary->expr));
         }
-        node = unary_ptr->expr;
-    }
-    else if(node->kind == CallExpr){
-        auto call_ptr = static_cast<CallExprNode*>(node);
-    }
-    else if(node->kind == IndexExpr){
-
     }
     else if(node->kind == FieldExpr){
-
+        auto field = static_cast<FieldExprNode*>(node);
+        PlaceInfo base = AnalyzePlace(field->receiver);
+        while(base.type.kind == TypeInfo::Ref || base.type.kind == TypeInfo::Box){
+            base = DereferencePlace(base);
+        }
+        if(base.type.kind != TypeInfo::Struct) return result;
+        auto struct_it = structs_table.find(base.type.name);
+        if(struct_it == structs_table.end() || struct_it->second == nullptr){
+            return result;
+        } // 不存在这个结构体
+        auto field_it = struct_it->second->fields.find(field->name); 
+        if(field_it == struct_it->second->fields.end() || field_it->second == nullptr){
+            return result;
+        } // 不存在这个field
+        result.type = *field_it->second;
+        result.can_write = base.can_mutate_contents;
+        result.can_mutate_contents = base.can_mutate_contents;
+        return result;
     }
-    else if(node->kind == MethodCallExpr){
-        auto method_call_ptr = static_cast<MethodCallExprNode*>(node);
-        TypeInfo receiver = VisitAndGetType(method_call_ptr->receiver);
-        if(receiver.kind != TypeInfo::Struct){
-            error = true;
+    else if(node->kind == IndexExpr){
+        auto index = static_cast<IndexExprNode*>(node);
+        PlaceInfo base = AnalyzePlace(index->base);
+        while(base.type.kind == TypeInfo::Ref || base.type.kind == TypeInfo::Box){
+            base = DereferencePlace(base);
         }
-        StructInfo* struct_info = structs_table[receiver.name];
-        if(struct_info->methods.find(method_call_ptr->name) == struct_info->methods.end()){
-            error = true; // 不存在这个method
+        if(base.type.kind != TypeInfo::Array && base.type.kind != TypeInfo::Vec) return result;
+        if(base.type.element == nullptr) return result;
+        result.type = *base.type.element;
+        result.can_write = base.can_mutate_contents;
+        result.can_mutate_contents = base.can_mutate_contents;
+        return result;
+    }
+    else if(node->kind == ExprStmt){
+        auto statement = static_cast<ExprStmtNode*>(node);
+        if(statement->expr == nullptr) return result;
+        result.type = VisitAndGetType(statement->expr);
+    }
+    // 如果上述都不是 就不是左值
+    return result;
+}
+bool SemanticCheck::CheckDerivedTrait(std::set<Derived> &derived, TypeInfo* &field){
+    if(field->kind == TypeInfo::Box){
+        if(derived.find(Copy) != derived.end()){
+            return false; // Box 不支持 Copy，否则可能double free
         }
-        else{
-            auto params = struct_info->methods[method_call_ptr->name]->params;
-            if(params.size() != method_call_ptr->args.size()){
-                error = true; // 参数不匹配
+    }
+    else if(field->kind == TypeInfo::Ref && field->is_mut){
+        if(derived.find(Clone) != derived.end()){
+            return false; // &mut T 不支持 Clone，可变引用最多一个
+        }
+    }
+    else if(field->kind == TypeInfo::Array){
+        return CheckDerivedTrait(derived,field->element);
+    }
+    else if(field->kind == TypeInfo::Vec){
+        return CheckDerivedTrait(derived,field->element);
+    }
+    else if(field->kind == TypeInfo::Struct){
+        // field里不能有自己 不能形成循环 前面已经检查了
+        auto other_struct = structs_table[field->name];
+        for(auto trait : derived){
+            if(other_struct->derived.find(trait) == other_struct->derived.end()){
+                // field里的这个结构体不满足这个triat
+                return false;
             }
-            else{
-                int cnt = 0;
-                for(auto param : params){
-                    if(!IsTypeEqual(*param.second->type,*GetTypeInfo(method_call_ptr->args[cnt]))){
-                        error = true;
-                        break;
-                    }
-                }
-            }
         }
+        return true;
+    }
+    return true;
+}
+bool SemanticCheck::CheckRecursiveConst(const std::vector<std::string> &begin,std::vector<std::string> &cur){
+    ConstantInfo* val_ptr;
+    if(cur.size() == 1){
+        // 目前是普通const
+        val_ptr = constants_table[cur[0]];
     }
     else{
-        if(node->kind == PathExpr){
-
+        val_ptr = structs_table[cur[0]]->consts[cur[1]];
+    }
+    // 判断下一步
+    if(val_ptr->path_value.size() == 0){
+        // 到达了int或者bool
+        return true;
+    }
+    else if(val_ptr->path_value.size() == 1){
+        std::string const_name = val_ptr->path_value[0];
+        if(constants_table.find(const_name) == constants_table.end()){
+            // 不存在这个路径
+            return false;
+        }
+        if(begin.size() == 1 && begin[0] == const_name){
+            // 循环
+            return false;
+        }
+        return CheckRecursiveConst(begin,val_ptr->path_value);
+    }
+    else{
+        std::string struct_name = val_ptr->path_value[0];
+        std::string const_name = val_ptr->path_value[1];
+        if(struct_name == "Self" && cur.size() == 1){
+            // 普通变量不能有Self路径
+            return false;
         }
         else{
-            // 其它类型都不能做左值
-            error = true;
+            // 把Self替换成现在的结构体名
+            struct_name = cur[0];
         }
+
+        if(structs_table.find(struct_name) == structs_table.end()){
+            return false; // 不存在的结构体
+        }
+        if(structs_table[struct_name]->consts.find(const_name) == structs_table[struct_name]->consts.end()){
+            return false; // 不存在的结构体内const
+        }
+        if(begin.size() == 2 && begin[0] == struct_name && begin[1] == const_name){
+            // 循环
+            return false;
+        }
+        std::vector<std::string> nex;
+        nex.push_back(struct_name);
+        nex.push_back(const_name);
+        return CheckRecursiveConst(begin,nex);
     }
-    return false;
 }
