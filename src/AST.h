@@ -177,7 +177,8 @@ public:
 class UnaryExprNode : public ASTNode {
 public:
     ASTNode* expr = nullptr;
-    std::string op;
+    std::string op{}; // * - ! & && mut
+    bool mut = false;
     UnaryExprNode(const ASTNodeType kind_);
     UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
     ~UnaryExprNode(){

@@ -1321,7 +1321,7 @@ static ASTNode* BuildPrimary(antlr4::ParserRuleContext* ctx){
             if(is_non_block->expression() != nullptr){
                 return new AssignExprNode(AssignExpr,is_non_block->expression()->assignmentExpression());
             }
-            return nullptr;
+            return new UnitTypeNode(UnitType);
         }
         if(is_non_block->arrayExpression() != nullptr){
             return BuildArray(is_non_block->arrayExpression());
@@ -1353,7 +1353,7 @@ static ASTNode* BuildPrimary(antlr4::ParserRuleContext* ctx){
             if(is_cb_primary->expression() != nullptr){
                 return new AssignExprNode(AssignExpr,is_cb_primary->expression()->assignmentExpression());
             }
-            return nullptr; // 空括号 () 暂无对应节点
+            return new UnitTypeNode(UnitType); // 空括号 () 暂无对应节点
         }
         if(is_cb_primary->arrayExpression() != nullptr){
             return BuildArray(is_cb_primary->arrayExpression());
@@ -1383,7 +1383,7 @@ static ASTNode* BuildPrimary(antlr4::ParserRuleContext* ctx){
         }
         return new ContinueExprNode(ContinueExpr);
     }
-    return nullptr;
+    return new UnitTypeNode(UnitType);
 }
 UnaryExprNode::UnaryExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
 UnaryExprNode::UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx) : ASTNode(kind_) {
@@ -1393,6 +1393,7 @@ UnaryExprNode::UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* 
     auto is_cb_unary = dynamic_cast<rx::Parser::ConditionBreakUnaryExpressionContext*>(ctx);
     if(is_unary != nullptr){
         if(is_unary->unaryOperator() != nullptr){
+            this->mut = is_unary->unaryOperator()->MUT();
             this->op = is_unary->unaryOperator()->getText();
             this->expr = new UnaryExprNode(UnaryExpr,is_unary->unaryExpression());
         }
@@ -1404,6 +1405,7 @@ UnaryExprNode::UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* 
     }
     if(is_cond_unary != nullptr){
         if(is_cond_unary->unaryOperator() != nullptr){
+            this->mut = is_cond_unary->unaryOperator()->MUT();
             this->op = is_cond_unary->unaryOperator()->getText();
             this->expr = new UnaryExprNode(UnaryExpr,is_cond_unary->conditionUnaryExpression());
         }
@@ -1415,6 +1417,7 @@ UnaryExprNode::UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* 
     }
     if(is_stmt_unary != nullptr){
         if(is_stmt_unary->unaryOperator() != nullptr){
+            this->mut = is_stmt_unary->unaryOperator()->MUT();
             this->op = is_stmt_unary->unaryOperator()->getText();
             this->expr = new UnaryExprNode(UnaryExpr,is_stmt_unary->unaryExpression());
         }
@@ -1434,6 +1437,7 @@ UnaryExprNode::UnaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* 
     }
     if(is_cb_unary != nullptr){
         if(is_cb_unary->unaryOperator() != nullptr){
+            this->mut = is_cb_unary->unaryOperator()->MUT();
             this->op = is_cb_unary->unaryOperator()->getText();
             this->expr = new UnaryExprNode(UnaryExpr,is_cb_unary->conditionUnaryExpression());
         }
