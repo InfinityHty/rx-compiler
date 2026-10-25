@@ -136,7 +136,7 @@ public:
 };
 class PathExprNode : public ASTNode {
 public:
-    std::vector<std::string> segments;
+    std::vector<std::pair<std::string,std::vector<ASTNode*>>> segments;
     PathExprNode(const ASTNodeType kind_,rx::Parser::PathInExpressionContext* ctx);
 };
 class StructExprNode : public ASTNode {
@@ -266,7 +266,7 @@ public:
 class BreakExprNode : public ASTNode {
 public:
     ASTNode* expr = nullptr;
-    BreakExprNode(const ASTNodeType kind_);
+    BreakExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
     ~BreakExprNode(){
         if(expr) delete expr;
     }
@@ -322,7 +322,7 @@ public:
 class ReturnExprNode : public ASTNode {
 public:
     ASTNode* expr = nullptr;
-    ReturnExprNode(const ASTNodeType kind_);
+    ReturnExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx);
     ~ReturnExprNode(){
         if(expr) delete expr;
     }
@@ -334,7 +334,7 @@ public:
 };
 class PathTypeNode : public ASTNode {
 public:
-    std::vector<std::string> segments; // 路径分段
+    std::vector<std::pair<std::string,std::vector<ASTNode*>>> segments; // 路径分段+泛型参数(多个)
     PathTypeNode(const ASTNodeType kind_,rx::Parser::TypePathContext* ctx);
     PathTypeNode(const ASTNodeType kind_);
 };

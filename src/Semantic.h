@@ -50,6 +50,7 @@ private:
     PlaceInfo DereferencePlace(const PlaceInfo& base);
     bool CanWrite(ASTNode* node); // 能否作为左值
     bool CanCopy(TypeInfo type); // 是否具备Copy trait
+    bool CanClone(TypeInfo type); // 是否具备Clone trait
     bool IsBuiltInTypes(std::string name); // 检查是否和关键字冲突
     bool IsBuiltInValues(std::string name);
     Derived StringToDerived(std::string); // 字符串转换成Derived
@@ -93,8 +94,10 @@ private:
     };
     std::vector<CycleInfo> cycles_stack; // 专门记录目前的循环嵌套情况
     // function
-    std::vector<TypeInfo> function_return_types{};
-    std::vector<std::string> call_path{};
+    std::vector<TypeInfo> function_return_types{}; // 记录多个可能的return type
+    std::vector<std::string> call_path{}; // 记录函数path
+    // block
+    std::vector<bool> diverge{};
 
     bool error = false;
     // dispatch

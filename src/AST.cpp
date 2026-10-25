@@ -72,7 +72,7 @@ long long StringToInt(std::string& val,std::string& suffix){
     if(val[digit] == '0' && val[digit + 1] == 'b'){
         // 二进制
         digit += 2;
-        while(val[digit] != 'i' && val[digit] != 'u'){
+        while(val[digit] != '\0' && val[digit] != 'i' && val[digit] != 'u'){
             if(val[digit] == '0' || val[digit] == '1'){
                 ans = ans * 2 + val[digit] - '0';
             }
@@ -82,7 +82,7 @@ long long StringToInt(std::string& val,std::string& suffix){
     else if(val[digit] == '0' && val[digit + 1] == 'o'){
         // 八进制
         digit += 2;
-        while(val[digit] != 'i' && val[digit] != 'u'){
+        while(val[digit] != '\0' && val[digit] != 'i' && val[digit] != 'u'){
             if('0' <= val[digit] && val[digit] <= '7'){
                 ans = ans * 8 + val[digit] - '0';
             }
@@ -92,7 +92,7 @@ long long StringToInt(std::string& val,std::string& suffix){
     else if(val[digit] == '0' && val[digit + 1] == 'x'){
         // 十六进制
         digit += 2;
-        while(val[digit] != 'i' && val[digit] != 'u'){
+        while(val[digit] != '\0' && val[digit] != 'i' && val[digit] != 'u'){
             if('0' <= val[digit] && val[digit] <= '9'){
                 ans = ans * 16 + val[digit] - '0';
             }
@@ -107,7 +107,7 @@ long long StringToInt(std::string& val,std::string& suffix){
     }
     else{
         // 十进制
-        while(val[digit] != 'i' && val[digit] != 'u'){
+        while(val[digit] != '\0' && val[digit] != 'i' && val[digit] != 'u'){
             if('0' <= val[digit] && val[digit] <= '9'){
                 ans = ans * 10 + val[digit] - '0';
             }
@@ -117,7 +117,7 @@ long long StringToInt(std::string& val,std::string& suffix){
     while(val[digit] != '\0'){
         suffix += val[digit++];
     }
-    if(suffix.size() == 0) suffix = "i32"; // 默认i32
+
     return ans * neg;
 }
 // 构建AST 各个派生类的构造函数
@@ -1210,7 +1210,16 @@ BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext
 }
 PathExprNode::PathExprNode(const ASTNodeType kind_,rx::Parser::PathInExpressionContext* ctx) : ASTNode(kind_) {
     for(auto seg : ctx->pathExprSegment()){
-        this->segments.push_back(seg->pathIdentSegment()->getText());
+        std::vector<ASTNode*> generics{};
+        if(seg->genericArgs()){
+            for(auto arg : seg->genericArgs()->genericArg()){
+                if(arg->lifetime()) continue;
+                if(arg->typeRef()){
+                    generics.push_back(CheckType(arg->typeRef()));
+                }
+            }
+        }
+        this->segments.push_back(std::pair(seg->pathIdentSegment()->getText(),generics));
     }
 }
 StructExprNode::StructExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
@@ -1220,9 +1229,37 @@ ArrayExprNode::ArrayExprNode(const ASTNodeType kind_,rx::Parser::ArrayExpression
     }
 }
 ArrayRepeatNode::ArrayRepeatNode(const ASTNodeType kind_) : ASTNode(kind_) {}
-BreakExprNode::BreakExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
+BreakExprNode::BreakExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx) : ASTNode(kind_) {
+    if(ctx == nullptr){
+        this->expr = new UnitTypeNode(UnitType);
+    }
+    else{
+        auto is_expr = dynamic_cast<rx::Parser::ExpressionContext*>(ctx);
+        auto is_cond_expr = dynamic_cast<rx::Parser::ConditionExpressionContext*>(ctx);
+        if(is_expr){
+            this->expr = new AssignExprNode(AssignExpr,is_expr->assignmentExpression());
+        }
+        if(is_cond_expr){
+            this->expr = new AssignExprNode(AssignExpr,is_cond_expr->conditionAssignmentExpression());
+        }
+    }
+}
 ContinueExprNode::ContinueExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
-ReturnExprNode::ReturnExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
+ReturnExprNode::ReturnExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx) : ASTNode(kind_) {
+    if(ctx == nullptr){
+        this->expr = new UnitTypeNode(UnitType);
+    }
+    else{
+        auto is_expr = dynamic_cast<rx::Parser::ExpressionContext*>(ctx);
+        auto is_cond_expr = dynamic_cast<rx::Parser::ConditionExpressionContext*>(ctx);
+        if(is_expr){
+            this->expr = new AssignExprNode(AssignExpr,is_expr->assignmentExpression());
+        }
+        if(is_cond_expr){
+            this->expr = new AssignExprNode(AssignExpr,is_cond_expr->conditionAssignmentExpression());
+        }
+    }
+}
 CallExprNode::CallExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
 MethodCallExprNode::MethodCallExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
 FieldExprNode::FieldExprNode(const ASTNodeType kind_) : ASTNode(kind_) {}
@@ -1292,7 +1329,18 @@ static ASTNode* BuildPrimary(antlr4::ParserRuleContext* ctx){
         if(is_primary->nonBlockPrimary() != nullptr){
             return BuildPrimary(is_primary->nonBlockPrimary());
         }
-        return new ExprStmtNode(ExprStmt,is_primary->expressionWithBlock());
+        if(is_primary->expressionWithBlock()->LOOP()){
+            return new LoopExprNode(LoopExpr,is_primary->expressionWithBlock()->blockExpression());
+        }
+        if(is_primary->expressionWithBlock()->WHILE()){
+            return new WhileExprNode(WhileExpr,is_primary->expressionWithBlock()->conditionExpression(),is_primary->expressionWithBlock()->blockExpression());
+        }
+        if(is_primary->expressionWithBlock()->ifExpression()){
+            return new IfExprNode(IfExpr,is_primary->expressionWithBlock()->ifExpression());
+        }
+        if(is_primary->expressionWithBlock()->blockExpression()){
+            return new BlockExprNode(BlockExpr,is_primary->expressionWithBlock()->blockExpression());
+        }
     }
     if(is_cond_primary != nullptr){
         if(is_cond_primary->conditionPrimaryWithoutBareBlock() != nullptr){
@@ -1327,14 +1375,14 @@ static ASTNode* BuildPrimary(antlr4::ParserRuleContext* ctx){
             return BuildArray(is_non_block->arrayExpression());
         }
         if(is_non_block->BREAK() != nullptr){
-            auto node = new BreakExprNode(BreakExpr);
+            auto node = new BreakExprNode(BreakExpr,is_non_block->expression());
             if(is_non_block->expression() != nullptr){
                 node->expr = new AssignExprNode(AssignExpr,is_non_block->expression()->assignmentExpression());
             }
             return node;
         }
         if(is_non_block->RETURN() != nullptr){
-            auto node = new ReturnExprNode(ReturnExpr);
+            auto node = new ReturnExprNode(ReturnExpr,is_non_block->expression());
             if(is_non_block->expression() != nullptr){
                 node->expr = new AssignExprNode(AssignExpr,is_non_block->expression()->assignmentExpression());
             }
@@ -1368,14 +1416,14 @@ static ASTNode* BuildPrimary(antlr4::ParserRuleContext* ctx){
             return new WhileExprNode(WhileExpr,is_cb_primary->conditionExpression(),is_cb_primary->blockExpression());
         }
         if(is_cb_primary->BREAK() != nullptr){
-            auto node = new BreakExprNode(BreakExpr);
+            auto node = new BreakExprNode(BreakExpr,is_cb_primary->conditionExpression());
             if(is_cb_primary->conditionBreakExpression() != nullptr){
                 node->expr = new AssignExprNode(AssignExpr,is_cb_primary->conditionBreakExpression()->conditionBreakAssignmentExpression());
             }
             return node;
         }
         if(is_cb_primary->RETURN() != nullptr){
-            auto node = new ReturnExprNode(ReturnExpr);
+            auto node = new ReturnExprNode(ReturnExpr,is_cb_primary->conditionBreakExpression());
             if(is_cb_primary->conditionExpression() != nullptr){
                 node->expr = new AssignExprNode(AssignExpr,is_cb_primary->conditionExpression()->conditionAssignmentExpression());
             }
@@ -1462,9 +1510,25 @@ static ASTNode* BuildClosedCastType(rx::Parser::ClosedCastTypeContext* ctx){
     else if(ctx->pathIdentSegment()){
         auto node = new PathTypeNode(PathType);
         for(auto seg : ctx->typePathSegment()){
-            node->segments.push_back(seg->pathIdentSegment()->getText());
+            std::vector<ASTNode*> generic{}; //收集泛型参数
+            if(seg->genericArgs()){
+                for(auto arg : seg->genericArgs()->genericArg()){
+                    if(arg->lifetime()) continue;
+                    if(arg->typeRef()){
+                        generic.push_back(ASTNode::CheckType(arg->typeRef()));
+                    }
+                }
+            }
+            node->segments.push_back(std::pair(seg->pathIdentSegment()->getText(),generic));
         }
-        node->segments.push_back(ctx->pathIdentSegment()->getText());
+        std::vector<ASTNode*> outside_generic{};
+        for(auto arg : ctx->genericArgs()->genericArg()){
+            if(arg->lifetime()) continue;
+            if(arg->typeRef()){
+                outside_generic.push_back(ASTNode::CheckType(arg->typeRef()));
+            }
+        }
+        node->segments.push_back(std::pair(ctx->pathIdentSegment()->getText(),outside_generic));
         return node;
     }
     else{
@@ -1587,7 +1651,16 @@ PathTypeNode::PathTypeNode(const ASTNodeType kind_) : ASTNode(kind_) {}
 PathTypeNode::PathTypeNode(const ASTNodeType kind_,rx::Parser::TypePathContext* ctx) : ASTNode(kind_) {
     auto segments = ctx->typePathSegment();
     for(auto seg : segments){
-        this->segments.push_back(seg->pathIdentSegment()->getText());
+        std::vector<ASTNode*> generic{};
+        if(seg->genericArgs()){
+            for(auto arg : seg->genericArgs()->genericArg()){
+                if(arg->lifetime()) continue;
+                if(arg->typeRef()){
+                    generic.push_back(CheckType(arg->typeRef()));
+                }
+            }
+        }
+        this->segments.push_back(std::pair(seg->pathIdentSegment()->getText(),generic));
     }
 }
 UnitTypeNode::UnitTypeNode(const ASTNodeType kind_) : ASTNode(kind_) {}
