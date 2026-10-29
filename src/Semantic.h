@@ -50,10 +50,12 @@ private:
     PlaceInfo AnalyzePlace(ASTNode* node);
     PlaceInfo DereferencePlace(const PlaceInfo& base);
     bool CanWrite(ASTNode* node); // 能否作为左值
+    bool IsPlaceExpr(ASTNode* node); // 是否是指向已有存储的place表达式（而非可物化的临时值）
     bool CanCopy(TypeInfo type); // 是否具备Copy trait
     bool CanClone(TypeInfo type); // 是否具备Clone trait
     bool CanPartialEq(TypeInfo type); // 是否具备PartialEq trait
     bool CanTypeMut(TypeInfo type); // type是否可以通过0或多次解引用达到可写状态
+    bool CanCoerce(TypeInfo cur,TypeInfo target); // 是否可以强制转换成目标类型
     bool IsBuiltInTypes(std::string name); // 检查是否和关键字冲突
     bool IsBuiltInValues(std::string name);
     Derived StringToDerived(std::string); // 字符串转换成Derived
