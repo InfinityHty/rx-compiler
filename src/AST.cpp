@@ -331,7 +331,9 @@ LoopExprNode::LoopExprNode(const ASTNodeType kind_,rx::Parser::BlockExpressionCo
 }
 BlockExprNode::BlockExprNode(const ASTNodeType kind_,rx::Parser::BlockExpressionContext* ctx) : ASTNode(kind_) {
     std::vector<rx::Parser::StatementContext*> statements = ctx->statement();
+    bool last = false;
     for(auto statement : statements){
+        last = false;
         auto is_let_stmt = statement->letStatement();
         auto is_expr_with_block = statement->expressionWithBlock();
         auto is_stmt_expr = statement->statementExpression();
@@ -339,6 +341,9 @@ BlockExprNode::BlockExprNode(const ASTNodeType kind_,rx::Parser::BlockExpression
             this->statements.push_back(new LetStmtNode(LetStmt,is_let_stmt));
         }
         else if(is_expr_with_block != nullptr){
+            if(!statement->SEMI()){
+                last = true;
+            }
             this->statements.push_back(new ExprStmtNode(ExprStmt,is_expr_with_block));
         }
         else if(is_stmt_expr != nullptr) {
@@ -348,6 +353,26 @@ BlockExprNode::BlockExprNode(const ASTNodeType kind_,rx::Parser::BlockExpression
     if(ctx->statementExpression() != nullptr){
         this->return_expression = new AssignExprNode(AssignExpr,ctx->statementExpression()->statementAssignmentExpression());
     }
+    else if(last){
+        // 最后一个块没有 ; 且为block
+        auto old_back = this->statements.back();
+        this->statements.pop_back();
+        delete old_back; // 防止内存泄漏
+        auto expr_with_block_ptr = statements.back()->expressionWithBlock();
+        if(expr_with_block_ptr->LOOP()){
+            this->return_expression = new LoopExprNode(LoopExpr,expr_with_block_ptr->blockExpression());
+        }
+        else if(expr_with_block_ptr->WHILE()){
+            this->return_expression = new WhileExprNode(WhileExpr,expr_with_block_ptr->conditionExpression(),expr_with_block_ptr->blockExpression());
+        }
+        else if(expr_with_block_ptr->ifExpression()){
+            this->return_expression = new IfExprNode(IfExpr,expr_with_block_ptr->ifExpression());
+        }
+        else{
+            this->return_expression = new BlockExprNode(BlockExpr,expr_with_block_ptr->blockExpression());
+        }
+    }
+    else this->return_expression = new UnitTypeNode(UnitType);
 }
 BinaryExprNode::BinaryExprNode(const ASTNodeType kind_,antlr4::ParserRuleContext* ctx) : ASTNode(kind_) {
     // OROR
@@ -1289,7 +1314,16 @@ static ASTNode* BuildDotSuffix(ASTNode* base,rx::Parser::DotSuffixContext* dot){
     }
     auto node = new MethodCallExprNode(MethodCallExpr);
     node->receiver = base;
-    node->name = dot->pathExprSegment()->pathIdentSegment()->getText();
+    node->name.first = dot->pathExprSegment()->pathIdentSegment()->getText();
+    if(dot->pathExprSegment()->genericArgs()){
+        auto generic_args = dot->pathExprSegment()->genericArgs()->genericArg();
+        for(auto arg : generic_args){
+            if(arg->lifetime()) continue;
+            if(arg->typeRef()){
+                node->name.second.push_back(ASTNode::CheckType(arg->typeRef()));
+            }
+        }
+    }
     for(auto arg : dot->callArguments()->expression()){
         node->args.push_back(new AssignExprNode(AssignExpr,arg->assignmentExpression()));
     }

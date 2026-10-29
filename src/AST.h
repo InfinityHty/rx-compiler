@@ -290,7 +290,7 @@ public:
 class MethodCallExprNode : public ASTNode {
 public:
     ASTNode* receiver = nullptr;
-    std::string name;
+    std::pair<std::string,std::vector<ASTNode*>> name;
     std::vector<ASTNode*> args;
     MethodCallExprNode(const ASTNodeType kind_);
     ~MethodCallExprNode(){

@@ -40,17 +40,20 @@ private:
     bool IsTypeEqual(const TypeInfo& a,const TypeInfo& b);
     TypeInfo* GetTypeInfo(ASTNode* node);
     TypeInfo* GetSelfTypeInfo(ASTNode* node,std::string struct_name);
+    // void ResolveSelfType(TypeInfo* type,const std::string& struct_name); // 把Self替换掉 不过在第2轮预检查的时候处理了相同问题，所以不需要了
     struct PlaceInfo{
         TypeInfo type;
         bool can_write = false; // 能不能改本身
         bool can_mutate_contents = false; // 能不能改内容
-        // bool can_use_for_mutation = false;
+        bool has_pass_shared_ref = false; // 是否穿过共享引用
     };
     PlaceInfo AnalyzePlace(ASTNode* node);
     PlaceInfo DereferencePlace(const PlaceInfo& base);
     bool CanWrite(ASTNode* node); // 能否作为左值
     bool CanCopy(TypeInfo type); // 是否具备Copy trait
     bool CanClone(TypeInfo type); // 是否具备Clone trait
+    bool CanPartialEq(TypeInfo type); // 是否具备PartialEq trait
+    bool CanTypeMut(TypeInfo type); // type是否可以通过0或多次解引用达到可写状态
     bool IsBuiltInTypes(std::string name); // 检查是否和关键字冲突
     bool IsBuiltInValues(std::string name);
     Derived StringToDerived(std::string); // 字符串转换成Derived
@@ -93,11 +96,14 @@ private:
         std::vector<TypeInfo> exit_types{};
     };
     std::vector<CycleInfo> cycles_stack; // 专门记录目前的循环嵌套情况
+    bool analysize_condition = false;
     // function
     std::vector<TypeInfo> function_return_types{}; // 记录多个可能的return type
     std::vector<std::string> call_path{}; // 记录函数path
     // block
     std::vector<bool> diverge{};
+    // Array
+    bool in_scope = false; // 是不是scope里的变量
 
     bool error = false;
     // dispatch
