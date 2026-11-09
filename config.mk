@@ -1,7 +1,7 @@
 # Build the C++ compiler once before testing: CMake configure + incremental
 # build into target/build (first full build takes a few minutes).
 BUILD = cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build target/build -j
+    cmake --build target/build --parallel 1
 
 # Semantic check: exit 0 to accept {source}, 1 to reject it.
 SEMANTIC = ./target/build/rx {source}
