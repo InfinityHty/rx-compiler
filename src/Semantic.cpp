@@ -528,7 +528,14 @@ void SemanticCheck::VisitExprStmt(ExprStmtNode* node){
     if(node->expr != nullptr){
         TypeInfo type = VisitAndGetType(node->expr);
         if(node->expr->kind == BlockExpr){
-            if(type.kind != TypeInfo::Unit) error = true;
+            if(type.kind != TypeInfo::Unit){
+                if(!inner_never){
+                    error = true;
+                }
+                else{
+                    diverge.back() = true;
+                }
+            }
         }
         if(type.kind == TypeInfo::Never && !diverge.empty()){
             diverge.back() = true;
@@ -538,6 +545,7 @@ void SemanticCheck::VisitExprStmt(ExprStmtNode* node){
 SemanticCheck::TypeInfo SemanticCheck::VisitBlockExpr(BlockExprNode* node){
     scopes.emplace_back();
     layer++;
+    inner_never = false;
     diverge.push_back(false);
     for(auto stmt : node->statements){
         Visit(stmt);
@@ -552,6 +560,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBlockExpr(BlockExprNode* node){
     if(return_type.kind == TypeInfo::Unit && diverge.back() == true){
         return_type = TypeInfo::Never;
     }
+    if(diverge.back() == true) inner_never = true;
     diverge.pop_back();
     scopes.pop_back();
     layer--;
@@ -909,6 +918,10 @@ SemanticCheck::TypeInfo SemanticCheck::VisitLoopExpr(LoopExprNode* node){
         }
         if(all_never) diverge.back() = true; // 所有break对应的操作数都发散
         loop_type = lub_type;
+    }
+    else{
+        // loop{};
+        loop_type.kind = TypeInfo::Never;
     }
     return loop_type;
 }

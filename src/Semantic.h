@@ -104,6 +104,7 @@ private:
     std::vector<std::string> call_path{}; // 记录函数path
     // block
     std::vector<bool> diverge{};
+    bool inner_never = false;
     // Array
     bool in_scope = false; // 是不是scope里的变量
 
