@@ -29,11 +29,13 @@ int main(int argc, char** argv) {
     if(parser.getNumberOfSyntaxErrors() > 0) return 1;
     CrateNode* ASTtree = new CrateNode(Crate,tree); // build AST
     SemanticCheck checker;
+    // Semantic Check
     if(checker.hasSemanticError(ASTtree)){
         delete ASTtree;
-        return 1;
+        return 1; // Reject
     }
-    // SEMANTIC check：0 = Accept，1 = Reject。
+    // Accept
     delete ASTtree;
+    // IR
     return 0;
 }

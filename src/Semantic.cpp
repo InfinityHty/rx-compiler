@@ -411,7 +411,7 @@ void SemanticCheck::Visit(ASTNode* node){
     switch(node->kind){
         case Crate: VisitCrate(static_cast<CrateNode*>(node));return;
         // items
-        case FnItem: VisitFnItem(static_cast<FnItemNode*>(node));return;
+        case FnItem: VisitFnItem(static_cast<FnItemNode*>(node),TypeInfo());return;
         case StructItem: VisitStructItem(static_cast<StructItemNode*>(node));return;            
         case ConstItem: VisitConstItem(static_cast<ConstItemNode*>(node));return;
         case ImplItem: VisitImplItem(static_cast<ImplItemNode*>(node));return;
@@ -465,21 +465,19 @@ void SemanticCheck::VisitCrate(CrateNode* node){
             Visit(item);
         }
         // 会分派到全局Fn那里导致找不到 TODO
-        // if(item->kind == ImplItem){
-        //     auto associated = static_cast<ImplItemNode*>(item);
-        //     for(auto associated_item : associated->associatedItems){
-        //         if(associated_item->kind == FnItem){
-        //             scopes.clear();
-        //             top_params.clear();
-        //             layer = -1;
-        //             Visit(associated_item);
-        //         }
-        //     }
-        // }
+        if(item->kind == ImplItem){
+            Visit(item);
+        }
     }
 }
-void SemanticCheck::VisitFnItem(FnItemNode* node){
-    FunctionInfo* func_info = functions_table[node->name];
+void SemanticCheck::VisitFnItem(FnItemNode* node,TypeInfo struct_type){
+    FunctionInfo* func_info;
+    if(struct_type.kind == TypeInfo::Struct){
+        func_info = structs_table[struct_type.name]->methods[node->name];
+    }
+    else{
+        func_info = functions_table[node->name];
+    }
     // 把参数放进作用域
     for(auto p : func_info->params){
         top_params[p.first] = p.second;
@@ -496,7 +494,23 @@ void SemanticCheck::VisitFnItem(FnItemNode* node){
 }
 void SemanticCheck::VisitStructItem(StructItemNode* node){}
 void SemanticCheck::VisitConstItem(ConstItemNode* node){}
-void SemanticCheck::VisitImplItem(ImplItemNode* node){}
+void SemanticCheck::VisitImplItem(ImplItemNode* node){
+    TypeInfo struct_type = *GetTypeInfo(node->type);
+    if(struct_type.kind != TypeInfo::Struct || structs_table.find(struct_type.name) == structs_table.end()){
+        error = true;
+        return;
+    }
+    current_impl_type = struct_type.name;
+    for(auto associated_item : node->associatedItems){
+        if(associated_item->kind == FnItem){
+            scopes.clear();
+            top_params.clear();
+            layer = -1;
+            VisitFnItem(static_cast<FnItemNode*>(associated_item),struct_type);
+        }
+    }
+    current_impl_type.clear();
+}
 void SemanticCheck::VisitLetStmt(LetStmtNode* node){
     // 允许name shadowing
     Symbol* symbol = new Symbol;
@@ -983,6 +997,11 @@ SemanticCheck::TypeInfo SemanticCheck::VisitContinueExpr(ContinueExprNode* node)
 }
 SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node){ 
     if(node->segments.size() == 1){
+        if(node->segments[0].first == "Self" && !current_impl_type.empty()){
+            TypeInfo type(TypeInfo::Struct);
+            type.name = current_impl_type;
+            return type;
+        }
         // const
         if(constants_table.find(node->segments[0].first) != constants_table.end()){
             return *constants_table[node->segments[0].first]->type;
@@ -1026,6 +1045,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node){
     }
     else if(node->segments.size() == 2){
         std::string first = node->segments[0].first;
+        if(first == "Self" && !current_impl_type.empty()) first = current_impl_type;
         std::string second = node->segments[1].first;
         if(structs_table.find(first) != structs_table.end()){
             // 结构体里的const
@@ -1116,12 +1136,14 @@ SemanticCheck::TypeInfo SemanticCheck::VisitStructExpr(StructExprNode* node){
         error = true; // 多段路径 有泛型参数
         return TypeInfo();
     }
-    if(structs_table.find(path->segments[0].first) == structs_table.end()){
+    std::string name = path->segments[0].first;
+    if(name == "Self" && !current_impl_type.empty()) name = current_impl_type;
+    if(structs_table.find(name) == structs_table.end()){
         error = true; // 不存在
         return TypeInfo();
     }
     TypeInfo type = TypeInfo(TypeInfo::Struct);
-    type.name = path->segments[0].first;
+    type.name = name;
     
     auto struct_fields = structs_table[type.name]->fields;
     if(node->member_name.size() != node->expr.size() || node->member_name.size() != struct_fields.size()){

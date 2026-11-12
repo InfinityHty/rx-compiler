@@ -91,6 +91,7 @@ private:
     // scopes and shadowing
     std::vector<std::unordered_map<std::string,Symbol*>> scopes; // 作用域
     std::unordered_map<std::string,Symbol*> top_params;
+    std::string current_impl_type; // 检查struct里的方法时记录struct名
     int layer = -1;
     // loop 
     struct CycleInfo{
@@ -115,7 +116,7 @@ private:
     // branch
     void VisitCrate(CrateNode* node);
     // items
-    void VisitFnItem(FnItemNode* node);
+    void VisitFnItem(FnItemNode* node,TypeInfo struct_type); // 如果是全局函数，struct_type取默认值
     void VisitStructItem(StructItemNode* node);
     void VisitConstItem(ConstItemNode* node);
     void VisitImplItem(ImplItemNode* node);
