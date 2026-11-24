@@ -1,0 +1,23 @@
+use rx::core::*;
+
+fn main() {
+    let mut a: i32 = 1;
+    a = a + 1;
+    println_i32(a);
+}
+
+/*
+declare void @println_i32(i32)
+
+define void @main() {
+entry:
+  %p0 = alloca i32
+  store i32 1, ptr %p0
+  %v0 = load i32, ptr %p0
+  %v1 = add i32 %v0, 1
+  store i32 %v1, ptr %p0
+  %v2 = load i32, ptr %p0
+  call void @println_i32(i32 %v2)
+  ret void
+}
+*/

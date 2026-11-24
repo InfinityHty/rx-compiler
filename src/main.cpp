@@ -4,7 +4,7 @@
 #include "CommonTokenStream.h"
 #include "AST.h"
 #include "Semantic.h"
-
+#include "IR.h"
 #include <iostream>
 
 int main(int argc, char** argv) {
@@ -29,13 +29,17 @@ int main(int argc, char** argv) {
     if(parser.getNumberOfSyntaxErrors() > 0) return 1;
     CrateNode* ASTtree = new CrateNode(Crate,tree); // build AST
     SemanticCheck checker;
+    SemanticResult result; // 记录semantic check结果，传给AST
+    IRBuilder ir;
     // Semantic Check
-    if(checker.hasSemanticError(ASTtree)){
+    if(checker.hasSemanticError(ASTtree,result)){
         delete ASTtree;
         return 1; // Reject
     }
     // Accept
-    delete ASTtree;
+    // delete ASTtree;
     // IR
+    // ir.BuildIR(ASTtree,result); // 传入AST tree和semantic check给出的结果
+    // ir.PrintIR();
     return 0;
 }

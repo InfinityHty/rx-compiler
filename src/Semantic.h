@@ -5,11 +5,12 @@
 #include<unordered_map>
 #include<string>
 
+class SemanticResult;
 // 第一遍遍历AST，构建Symbol Table
 class SemanticCheck{
 public:
-    bool hasSemanticError(CrateNode* node);
-private:
+    bool hasSemanticError(CrateNode* node,SemanticResult& result);
+    // friend SemanticResult;
     struct TypeInfo;
     struct Symbol;
     struct ConstantInfo;
@@ -47,9 +48,9 @@ private:
         bool can_mutate_contents = false; // 能不能改内容
         bool has_pass_shared_ref = false; // 是否穿过共享引用
     };
-    PlaceInfo AnalyzePlace(ASTNode* node);
+    PlaceInfo AnalyzePlace(ASTNode* node,SemanticResult &result);
     PlaceInfo DereferencePlace(const PlaceInfo& base);
-    bool CanWrite(ASTNode* node); // 能否作为左值
+    bool CanWrite(ASTNode* node,SemanticResult &result); // 能否作为左值
     bool IsPlaceExpr(ASTNode* node); // 是否是指向已有存储的place表达式（而非可物化的临时值）
     bool CanCopy(TypeInfo type); // 是否具备Copy trait
     bool CanClone(TypeInfo type); // 是否具备Clone trait
@@ -110,46 +111,48 @@ private:
     bool in_scope = false; // 是不是scope里的变量
 
     bool error = false;
+private:
     // dispatch
-    void Visit(ASTNode* node);
-    TypeInfo VisitAndGetType(ASTNode* node);
+    void Visit(ASTNode* node,SemanticResult &result);
+    TypeInfo VisitAndGetType(ASTNode* node,SemanticResult &result);
+    TypeInfo VisitAndGetTypeImpl(ASTNode* node,SemanticResult &result);
     // branch
-    void VisitCrate(CrateNode* node);
+    void VisitCrate(CrateNode* node,SemanticResult &result);
     // items
-    void VisitFnItem(FnItemNode* node,TypeInfo struct_type); // 如果是全局函数，struct_type取默认值
-    void VisitStructItem(StructItemNode* node);
-    void VisitConstItem(ConstItemNode* node);
-    void VisitImplItem(ImplItemNode* node);
+    void VisitFnItem(FnItemNode* node,TypeInfo struct_type,SemanticResult &result); // 如果是全局函数，struct_type取默认值
+    void VisitStructItem(StructItemNode* node,SemanticResult &result);
+    void VisitConstItem(ConstItemNode* node,SemanticResult &result);
+    void VisitImplItem(ImplItemNode* node,SemanticResult &result);
     // statements
-    void VisitLetStmt(LetStmtNode* node);
-    void VisitExprStmt(ExprStmtNode* node);
+    void VisitLetStmt(LetStmtNode* node,SemanticResult &result);
+    void VisitExprStmt(ExprStmtNode* node,SemanticResult &result);
     // expressions
-    TypeInfo VisitIntLit(IntLitNode* node); //
-    TypeInfo VisitBoolLit(BoolLitNode* node); //
-    TypeInfo VisitPathExpr(PathExprNode* node); //
-    TypeInfo VisitStructExpr(StructExprNode* node); //
-    TypeInfo VisitArrayExpr(ArrayExprNode* node); //
-    TypeInfo VisitArrayRepeat(ArrayRepeatNode* node); //
-    TypeInfo VisitUnaryExpr(UnaryExprNode* node); //
-    TypeInfo VisitBinaryExpr(BinaryExprNode* node); //
-    TypeInfo VisitAssignExpr(AssignExprNode* node); //
-    TypeInfo VisitCastExpr(CastExprNode* node); //
-    TypeInfo VisitCallExpr(CallExprNode* node);
-    TypeInfo VisitMethodCallExpr(MethodCallExprNode* node);
-    TypeInfo VisitFieldExpr(FieldExprNode* node); //
-    TypeInfo VisitIndexExpr(IndexExprNode* node); //
-    TypeInfo VisitBlockExpr(BlockExprNode* node); //
-    TypeInfo VisitIfExpr(IfExprNode* node); //
-    TypeInfo VisitLoopExpr(LoopExprNode* node); //
-    TypeInfo VisitWhileExpr(WhileExprNode* node); // 
-    TypeInfo VisitBreakExpr(BreakExprNode* node); //
-    TypeInfo VisitContinueExpr(ContinueExprNode* node); //
-    TypeInfo VisitReturnExpr(ReturnExprNode* node);
+    TypeInfo VisitIntLit(IntLitNode* node,SemanticResult &result); //
+    TypeInfo VisitBoolLit(BoolLitNode* node,SemanticResult &result); //
+    TypeInfo VisitPathExpr(PathExprNode* node,SemanticResult &result); //
+    TypeInfo VisitStructExpr(StructExprNode* node,SemanticResult &result); //
+    TypeInfo VisitArrayExpr(ArrayExprNode* node,SemanticResult &result); //
+    TypeInfo VisitArrayRepeat(ArrayRepeatNode* node,SemanticResult &result); //
+    TypeInfo VisitUnaryExpr(UnaryExprNode* node,SemanticResult &result); //
+    TypeInfo VisitBinaryExpr(BinaryExprNode* node,SemanticResult &result); //
+    TypeInfo VisitAssignExpr(AssignExprNode* node,SemanticResult &result); //
+    TypeInfo VisitCastExpr(CastExprNode* node,SemanticResult &result); //
+    TypeInfo VisitCallExpr(CallExprNode* node,SemanticResult &result);
+    TypeInfo VisitMethodCallExpr(MethodCallExprNode* node,SemanticResult &result);
+    TypeInfo VisitFieldExpr(FieldExprNode* node,SemanticResult &result); //
+    TypeInfo VisitIndexExpr(IndexExprNode* node,SemanticResult &result); //
+    TypeInfo VisitBlockExpr(BlockExprNode* node,SemanticResult &result); //
+    TypeInfo VisitIfExpr(IfExprNode* node,SemanticResult &result); //
+    TypeInfo VisitLoopExpr(LoopExprNode* node,SemanticResult &result); //
+    TypeInfo VisitWhileExpr(WhileExprNode* node,SemanticResult &result); // 
+    TypeInfo VisitBreakExpr(BreakExprNode* node,SemanticResult &result); //
+    TypeInfo VisitContinueExpr(ContinueExprNode* node,SemanticResult &result); //
+    TypeInfo VisitReturnExpr(ReturnExprNode* node,SemanticResult &result);
     // type
-    TypeInfo VisitUnitType(UnitTypeNode* node);
-    TypeInfo VisitPathType(PathTypeNode* node);
-    TypeInfo VisitRefType(RefTypeNode* node);
-    TypeInfo VisitArrayType(ArrayTypeNode* node);
+    TypeInfo VisitUnitType(UnitTypeNode* node,SemanticResult &result);
+    TypeInfo VisitPathType(PathTypeNode* node,SemanticResult &result);
+    TypeInfo VisitRefType(RefTypeNode* node,SemanticResult &result);
+    TypeInfo VisitArrayType(ArrayTypeNode* node,SemanticResult &result);
 };
 
 // Crate, FnItem, StructItem, ConstItem, ImplItem, /*UseItem,*/
@@ -165,3 +168,19 @@ private:
 //     UnitType, PathType, RefType, ArrayType,
 //     // others
 //     FnSelfParam,FnParam, StructField,
+
+// 一次编译的只读快照
+class SemanticResult{
+public:
+    uint32_t ptr_id_counter = 0;
+    struct BindingInfo{
+        uint32_t ptr_id; // 在一个function里唯一
+        SemanticCheck::TypeInfo type;
+    };
+    std::unordered_map<ASTNode*,SemanticCheck::TypeInfo> expressions_table; // 已访问的表达式和类型节点的解析类型
+    std::unordered_map<ASTNode*,BindingInfo> bindings_table; // LetStatement
+    std::unordered_map<CallExprNode*,std::vector<std::string>> calls_table; // Call语句的路径记录
+    std::unordered_map<std::string,SemanticCheck::FunctionInfo> functions_table; // 全局函数表
+    std::unordered_map<std::string,SemanticCheck::StructInfo> structs_table;
+    std::unordered_map<std::string,SemanticCheck::ConstantInfo> constants_table;
+};

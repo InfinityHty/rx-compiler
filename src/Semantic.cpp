@@ -1,7 +1,7 @@
 #include "Semantic.h"
 #include "AST.h"
 SemanticCheck::TypeInfo::TypeInfo() = default;
-bool SemanticCheck::hasSemanticError(CrateNode* node){
+bool SemanticCheck::hasSemanticError(CrateNode* node,SemanticResult &result){
     // 0. 加入built-in I/O functions
     FunctionInfo* get_i32 = new FunctionInfo;
     get_i32->return_type = new TypeInfo(TypeInfo::I32);
@@ -400,77 +400,94 @@ bool SemanticCheck::hasSemanticError(CrateNode* node){
         }
     }
     if(!has_main) return true; // 不存在main函数
+    
+    // functions_table,structs_table和consts_table拷贝给result快照
+    for(auto func : functions_table){
+        result.functions_table[func.first] = *func.second;
+    }
+    for(auto constant : constants_table){
+        result.constants_table[constant.first] = *constant.second;
+    }
+    for(auto struc : structs_table){
+        result.structs_table[struc.first] = *struc.second;
+    }
+
     // 3.二次扫描所有函数体
-    VisitCrate(node);
+    VisitCrate(node,result);
     if(error) return true;
     // 全部检查完没有问题
     return false;
 }
 // dispatch 用Visit统一分发给不同节点类型
-void SemanticCheck::Visit(ASTNode* node){
+void SemanticCheck::Visit(ASTNode* node,SemanticResult &result){
     switch(node->kind){
-        case Crate: VisitCrate(static_cast<CrateNode*>(node));return;
+        case Crate: VisitCrate(static_cast<CrateNode*>(node),result);return;
         // items
-        case FnItem: VisitFnItem(static_cast<FnItemNode*>(node),TypeInfo());return;
-        case StructItem: VisitStructItem(static_cast<StructItemNode*>(node));return;            
-        case ConstItem: VisitConstItem(static_cast<ConstItemNode*>(node));return;
-        case ImplItem: VisitImplItem(static_cast<ImplItemNode*>(node));return;
+        case FnItem: VisitFnItem(static_cast<FnItemNode*>(node),TypeInfo(),result);return;
+        case StructItem: VisitStructItem(static_cast<StructItemNode*>(node),result);return;            
+        case ConstItem: VisitConstItem(static_cast<ConstItemNode*>(node),result);return;
+        case ImplItem: VisitImplItem(static_cast<ImplItemNode*>(node),result);return;
         // statements
-        case LetStmt: VisitLetStmt(static_cast<LetStmtNode*>(node));return;            
-        case ExprStmt: VisitExprStmt(static_cast<ExprStmtNode*>(node));return;
+        case LetStmt: VisitLetStmt(static_cast<LetStmtNode*>(node),result);return;            
+        case ExprStmt: VisitExprStmt(static_cast<ExprStmtNode*>(node),result);return;
         default: return;
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitAndGetType(ASTNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitAndGetType(ASTNode* node,SemanticResult &result){
+    TypeInfo type = VisitAndGetTypeImpl(node,result);
+    result.expressions_table[node] = type; // 每一次访问expression都记录type
+    return type;
+}
+SemanticCheck::TypeInfo SemanticCheck::VisitAndGetTypeImpl(ASTNode* node,SemanticResult &result){
     switch(node->kind){
         // expression
-        case IntLit: return VisitIntLit(static_cast<IntLitNode*>(node));
-        case BoolLit: return VisitBoolLit(static_cast<BoolLitNode*>(node));
-        case BinaryExpr: return VisitBinaryExpr(static_cast<BinaryExprNode*>(node));
-        case AssignExpr: return VisitAssignExpr(static_cast<AssignExprNode*>(node));
-        case BlockExpr: return VisitBlockExpr(static_cast<BlockExprNode*>(node));
-        case IfExpr: return VisitIfExpr(static_cast<IfExprNode*>(node));
-        case LoopExpr: return VisitLoopExpr(static_cast<LoopExprNode*>(node));
-        case WhileExpr: return VisitWhileExpr(static_cast<WhileExprNode*>(node));
-        case BreakExpr: return VisitBreakExpr(static_cast<BreakExprNode*>(node));
-        case ContinueExpr: return VisitContinueExpr(static_cast<ContinueExprNode*>(node));
-        case UnaryExpr: return VisitUnaryExpr(static_cast<UnaryExprNode*>(node));
-        case CastExpr: return VisitCastExpr(static_cast<CastExprNode*>(node));
-        case PathExpr: return VisitPathExpr(static_cast<PathExprNode*>(node));
-        case StructExpr: return VisitStructExpr(static_cast<StructExprNode*>(node));
-        case ArrayExpr: return VisitArrayExpr(static_cast<ArrayExprNode*>(node));
-        case ArrayRepeat: return VisitArrayRepeat(static_cast<ArrayRepeatNode*>(node));
-        case FieldExpr: return VisitFieldExpr(static_cast<FieldExprNode*>(node));
-        case IndexExpr: return VisitIndexExpr(static_cast<IndexExprNode*>(node));
-        case CallExpr: return VisitCallExpr(static_cast<CallExprNode*>(node));
-        case MethodCallExpr: return VisitMethodCallExpr(static_cast<MethodCallExprNode*>(node));
-        case ReturnExpr: return VisitReturnExpr(static_cast<ReturnExprNode*>(node));
+        case IntLit: return VisitIntLit(static_cast<IntLitNode*>(node),result);
+        case BoolLit: return VisitBoolLit(static_cast<BoolLitNode*>(node),result);
+        case BinaryExpr: return VisitBinaryExpr(static_cast<BinaryExprNode*>(node),result);
+        case AssignExpr: return VisitAssignExpr(static_cast<AssignExprNode*>(node),result);
+        case BlockExpr: return VisitBlockExpr(static_cast<BlockExprNode*>(node),result);
+        case IfExpr: return VisitIfExpr(static_cast<IfExprNode*>(node),result);
+        case LoopExpr: return VisitLoopExpr(static_cast<LoopExprNode*>(node),result);
+        case WhileExpr: return VisitWhileExpr(static_cast<WhileExprNode*>(node),result);
+        case BreakExpr: return VisitBreakExpr(static_cast<BreakExprNode*>(node),result);
+        case ContinueExpr: return VisitContinueExpr(static_cast<ContinueExprNode*>(node),result);
+        case UnaryExpr: return VisitUnaryExpr(static_cast<UnaryExprNode*>(node),result);
+        case CastExpr: return VisitCastExpr(static_cast<CastExprNode*>(node),result);
+        case PathExpr: return VisitPathExpr(static_cast<PathExprNode*>(node),result);
+        case StructExpr: return VisitStructExpr(static_cast<StructExprNode*>(node),result);
+        case ArrayExpr: return VisitArrayExpr(static_cast<ArrayExprNode*>(node),result);
+        case ArrayRepeat: return VisitArrayRepeat(static_cast<ArrayRepeatNode*>(node),result);
+        case FieldExpr: return VisitFieldExpr(static_cast<FieldExprNode*>(node),result);
+        case IndexExpr: return VisitIndexExpr(static_cast<IndexExprNode*>(node),result);
+        case CallExpr: return VisitCallExpr(static_cast<CallExprNode*>(node),result);
+        case MethodCallExpr: return VisitMethodCallExpr(static_cast<MethodCallExprNode*>(node),result);
+        case ReturnExpr: return VisitReturnExpr(static_cast<ReturnExprNode*>(node),result);
         // types
-        case UnitType: return VisitUnitType(static_cast<UnitTypeNode*>(node));
-        case PathType: return VisitPathType(static_cast<PathTypeNode*>(node));
-        case ArrayType: return VisitArrayType(static_cast<ArrayTypeNode*>(node));
-        case RefType: return VisitRefType(static_cast<RefTypeNode*>(node));
+        case UnitType: return VisitUnitType(static_cast<UnitTypeNode*>(node),result);
+        case PathType: return VisitPathType(static_cast<PathTypeNode*>(node),result);
+        case ArrayType: return VisitArrayType(static_cast<ArrayTypeNode*>(node),result);
+        case RefType: return VisitRefType(static_cast<RefTypeNode*>(node),result);
         // others
         default:
             return TypeInfo(); // 默认Unknown
     }   
 }
-void SemanticCheck::VisitCrate(CrateNode* node){
+void SemanticCheck::VisitCrate(CrateNode* node,SemanticResult &result){
     for(auto item : node->items){
         if(item->kind == FnItem){
             // 检查每个函数体
             scopes.clear();
             top_params.clear();
             layer = -1;
-            Visit(item);
+            result.ptr_id_counter = 0;
+            Visit(item,result);
         }
-        // 会分派到全局Fn那里导致找不到 TODO
         if(item->kind == ImplItem){
-            Visit(item);
+            Visit(item,result);
         }
     }
 }
-void SemanticCheck::VisitFnItem(FnItemNode* node,TypeInfo struct_type){
+void SemanticCheck::VisitFnItem(FnItemNode* node,TypeInfo struct_type,SemanticResult &result){
     FunctionInfo* func_info;
     if(struct_type.kind == TypeInfo::Struct){
         func_info = structs_table[struct_type.name]->methods[node->name];
@@ -483,7 +500,7 @@ void SemanticCheck::VisitFnItem(FnItemNode* node,TypeInfo struct_type){
         top_params[p.first] = p.second;
     }
     function_return_types.clear(); // 记录多个return type
-    TypeInfo return_ = VisitAndGetType(node->blockExpr);
+    TypeInfo return_ = VisitAndGetType(node->blockExpr,result);
     if(return_.kind == TypeInfo::Unknown) error = true;
     if(return_.kind != TypeInfo::Never && !IsTypeEqual(return_,*func_info->return_type)) error = true; // 返回类型不匹配
     for(auto type : function_return_types){
@@ -492,9 +509,9 @@ void SemanticCheck::VisitFnItem(FnItemNode* node,TypeInfo struct_type){
         }
     }
 }
-void SemanticCheck::VisitStructItem(StructItemNode* node){}
-void SemanticCheck::VisitConstItem(ConstItemNode* node){}
-void SemanticCheck::VisitImplItem(ImplItemNode* node){
+void SemanticCheck::VisitStructItem(StructItemNode* node,SemanticResult &result){}
+void SemanticCheck::VisitConstItem(ConstItemNode* node,SemanticResult &result){}
+void SemanticCheck::VisitImplItem(ImplItemNode* node,SemanticResult &result){
     TypeInfo struct_type = *GetTypeInfo(node->type);
     if(struct_type.kind != TypeInfo::Struct || structs_table.find(struct_type.name) == structs_table.end()){
         error = true;
@@ -506,23 +523,24 @@ void SemanticCheck::VisitImplItem(ImplItemNode* node){
             scopes.clear();
             top_params.clear();
             layer = -1;
-            VisitFnItem(static_cast<FnItemNode*>(associated_item),struct_type);
+            result.ptr_id_counter = 0;
+            VisitFnItem(static_cast<FnItemNode*>(associated_item),struct_type,result);
         }
     }
     current_impl_type.clear();
 }
-void SemanticCheck::VisitLetStmt(LetStmtNode* node){
+void SemanticCheck::VisitLetStmt(LetStmtNode* node,SemanticResult &result){
     // 允许name shadowing
     Symbol* symbol = new Symbol;
     symbol->type = new TypeInfo(TypeInfo::Unknown);
     if(node->mut) symbol->mut = true;
     if(node->type != nullptr){
-        TypeInfo defined_type = VisitAndGetType(node->type);
+        TypeInfo defined_type = VisitAndGetType(node->type,result);
         if(defined_type.kind == TypeInfo::Unknown) error = true; // 不存在的type
-        TypeInfo expr_type = VisitAndGetType(node->expr);
+        TypeInfo expr_type = VisitAndGetType(node->expr,result);
         if(expr_type.kind == TypeInfo::Unknown) error = true; // 不存在的type
         if(expr_type.kind != TypeInfo::Never && !IsTypeEqual(defined_type,expr_type) && !CanCoerce(expr_type,defined_type)) error = true;
-        PlaceInfo expr_place = AnalyzePlace(node->expr);
+        PlaceInfo expr_place = AnalyzePlace(node->expr,result);
         if(defined_type.kind == TypeInfo::Ref && defined_type.is_mut){
             if(expr_place.has_pass_shared_ref){
                 error = true;
@@ -531,16 +549,17 @@ void SemanticCheck::VisitLetStmt(LetStmtNode* node){
         *symbol->type = defined_type;
     }
     else{
-        TypeInfo expr_type = VisitAndGetType(node->expr);
+        TypeInfo expr_type = VisitAndGetType(node->expr,result);
         if(expr_type.kind == TypeInfo::Unknown) error = true;
         // if(expr_type.kind == TypeInfo::Default) expr_type.kind = TypeInfo::I32;
         *symbol->type = expr_type;
     }
+    result.bindings_table[node] = SemanticResult::BindingInfo{result.ptr_id_counter++,*symbol->type};
     scopes[layer][node->name] = symbol; // 加入作用域  
 }
-void SemanticCheck::VisitExprStmt(ExprStmtNode* node){
+void SemanticCheck::VisitExprStmt(ExprStmtNode* node,SemanticResult &result){
     if(node->expr != nullptr){
-        TypeInfo type = VisitAndGetType(node->expr);
+        TypeInfo type = VisitAndGetType(node->expr,result);
         if(node->expr->kind == BlockExpr){
             if(type.kind != TypeInfo::Unit){
                 if(!inner_never){
@@ -556,17 +575,17 @@ void SemanticCheck::VisitExprStmt(ExprStmtNode* node){
         }
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitBlockExpr(BlockExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitBlockExpr(BlockExprNode* node,SemanticResult &result){
     scopes.emplace_back();
     layer++;
     inner_never = false;
     diverge.push_back(false);
     for(auto stmt : node->statements){
-        Visit(stmt);
+        Visit(stmt,result);
     }
     TypeInfo return_type;
     if(node->return_expression == nullptr) return_type.kind = TypeInfo::Unit;
-    else return_type = VisitAndGetType(node->return_expression);
+    else return_type = VisitAndGetType(node->return_expression,result);
     if(return_type.kind == TypeInfo::Unknown){
         error = true;
         return TypeInfo();
@@ -580,7 +599,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBlockExpr(BlockExprNode* node){
     layer--;
     return return_type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitIntLit(IntLitNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitIntLit(IntLitNode* node,SemanticResult &result){
     TypeInfo type;
     type.int_val = node->value;
     if(node->suffix.size() == 0) type.kind = TypeInfo::Default;
@@ -591,24 +610,24 @@ SemanticCheck::TypeInfo SemanticCheck::VisitIntLit(IntLitNode* node){
     else error = true; // 不存在的整数类型
     return type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitBoolLit(BoolLitNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitBoolLit(BoolLitNode* node,SemanticResult &result){
     TypeInfo type;
     type.kind = TypeInfo::Bool;
     type.bool_val = node->value;
     return type;
 }
 
-SemanticCheck::TypeInfo SemanticCheck::VisitAssignExpr(AssignExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitAssignExpr(AssignExprNode* node,SemanticResult &result){
     if(node->right == nullptr){
         // 没有赋值
-        TypeInfo type = VisitAndGetType(node->left);
+        TypeInfo type = VisitAndGetType(node->left,result);
         if(type.kind == TypeInfo::Unknown) error = true;
         return type;
     }
     else{
-        TypeInfo left_type = VisitAndGetType(node->left);
-        TypeInfo right_type = VisitAndGetType(node->right);
-        if(!CanWrite(node->left)){
+        TypeInfo left_type = VisitAndGetType(node->left,result);
+        TypeInfo right_type = VisitAndGetType(node->right,result);
+        if(!CanWrite(node->left,result)){
             error = true; // 等号左边不是合法的左值place
         }
         if(right_type.kind != TypeInfo::Never && !IsTypeEqual(left_type,right_type)){
@@ -626,9 +645,9 @@ SemanticCheck::TypeInfo SemanticCheck::VisitAssignExpr(AssignExprNode* node){
         return left_type;
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node,SemanticResult &result){
     if(node->op.size() == 0){
-        return VisitAndGetType(node->operands[0]);
+        return VisitAndGetType(node->operands[0],result);
     }
     else{
         // accept one shared-reference layer
@@ -636,7 +655,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
         switch(node->level){
             case 0:case 1:{
                 for(auto op : node->operands){
-                    TypeInfo op_type = VisitAndGetType(op);
+                    TypeInfo op_type = VisitAndGetType(op,result);
                     // if(op_type.kind == TypeInfo::Ref && !op_type.is_mut) op_type = *op_type.element;
                     if(op_type.kind != TypeInfo::Bool) error = true;
                 }
@@ -644,10 +663,10 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
                 break;
             }
             case 2:{
-                TypeInfo prev_type = VisitAndGetType(node->operands[0]);
+                TypeInfo prev_type = VisitAndGetType(node->operands[0],result);
                 // if(prev_type.kind == TypeInfo::Ref && !prev_type.is_mut) prev_type = *prev_type.element;
                 for(auto op: node->operands){
-                    TypeInfo op_type = VisitAndGetType(op);
+                    TypeInfo op_type = VisitAndGetType(op,result);
                     // if(op_type.kind == TypeInfo::Ref && !op_type.is_mut) op_type = *op_type.element;
                     if(op_type.kind == TypeInfo::Unknown){
                         error = true;
@@ -673,10 +692,10 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
                 break;
             }
             case 3: case 4: case 5:{
-                TypeInfo prev_type = VisitAndGetType(node->operands[0]);
+                TypeInfo prev_type = VisitAndGetType(node->operands[0],result);
                 if(prev_type.kind == TypeInfo::Ref && !prev_type.is_mut) prev_type = *prev_type.element;
                 for(auto op: node->operands){
-                    TypeInfo op_type = VisitAndGetType(op);
+                    TypeInfo op_type = VisitAndGetType(op,result);
                     if(op_type.kind == TypeInfo::Ref && !op_type.is_mut) op_type = *op_type.element;
                     if(op_type.kind == TypeInfo::Default) op_type.kind = TypeInfo::I32;
                     if(op_type.kind != TypeInfo::I32 && op_type.kind != TypeInfo::U32
@@ -693,10 +712,10 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
                 break;
             }
             case 6:{
-                TypeInfo first_type =  VisitAndGetType(node->operands[0]);
+                TypeInfo first_type =  VisitAndGetType(node->operands[0],result);
                 if(first_type.kind == TypeInfo::Ref && !first_type.is_mut) first_type = *first_type.element;
                 for(auto op: node->operands){
-                    TypeInfo op_type = VisitAndGetType(op);
+                    TypeInfo op_type = VisitAndGetType(op,result);
                     if(op_type.kind == TypeInfo::Ref && !op_type.is_mut) op_type = *op_type.element;
                     if(op_type.kind == TypeInfo::Default) op_type.kind = TypeInfo::I32;
                     if(op_type.kind != TypeInfo::I32 && op_type.kind != TypeInfo::U32
@@ -709,10 +728,10 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
                 break;
             }
             case 7: case 8:{
-                TypeInfo prev_type = VisitAndGetType(node->operands[0]);
+                TypeInfo prev_type = VisitAndGetType(node->operands[0],result);
                 if(prev_type.kind == TypeInfo::Ref && !prev_type.is_mut) prev_type = *prev_type.element;
                 for(auto op: node->operands){
-                    TypeInfo op_type = VisitAndGetType(op);
+                    TypeInfo op_type = VisitAndGetType(op,result);
                     if(op_type.kind == TypeInfo::Ref && !op_type.is_mut) op_type = *op_type.element;
                     if(op_type.kind == TypeInfo::Default) op_type.kind = TypeInfo::I32;
                     if(op_type.kind != TypeInfo::I32 && op_type.kind != TypeInfo::U32
@@ -733,14 +752,14 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBinaryExpr(BinaryExprNode* node){
         return type;
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitUnaryExpr(UnaryExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitUnaryExpr(UnaryExprNode* node,SemanticResult &result){
     if(node->op.size() == 0){
-        return VisitAndGetType(node->expr);
+        return VisitAndGetType(node->expr,result);
     }
     else{
         if(node->op == "*"){
             // 解引用
-            TypeInfo deref_type = VisitAndGetType(node->expr);
+            TypeInfo deref_type = VisitAndGetType(node->expr,result);
             if(deref_type.kind == TypeInfo::Ref || deref_type.kind == TypeInfo::Box){
                 return *deref_type.element;
             }
@@ -754,13 +773,13 @@ SemanticCheck::TypeInfo SemanticCheck::VisitUnaryExpr(UnaryExprNode* node){
             TypeInfo ref_type;
             ref_type.kind = TypeInfo::Ref;
             ref_type.element = new TypeInfo;
-            *ref_type.element = VisitAndGetType(node->expr);
+            *ref_type.element = VisitAndGetType(node->expr,result);
             if(node->mut){
                 ref_type.is_mut = true;
                 // 对place取&mut要求可写；对右值取&mut会物化一个临时值，总是允许
                 // &mut 作用于右值时会物化一个临时值（temporary materialization），总是允许；
                 // 只有作用于指向已有存储的 place 表达式（变量、解引用、字段、索引）时才要求该 place 可写。
-                if(IsPlaceExpr(node->expr) && !CanWrite(node->expr)){
+                if(IsPlaceExpr(node->expr) && !CanWrite(node->expr,result)){
                     error = true;
                 }
             } 
@@ -774,16 +793,16 @@ SemanticCheck::TypeInfo SemanticCheck::VisitUnaryExpr(UnaryExprNode* node){
             if(node->mut){
                 inner_ref_type.is_mut = true;
                 // 内层&mut的规则与单层一致：place要求可写，右值物化为临时值
-                if(IsPlaceExpr(node->expr) && !CanWrite(node->expr)){
+                if(IsPlaceExpr(node->expr) && !CanWrite(node->expr,result)){
                     error = true;
                 }
             }
-            inner_ref_type.element = new TypeInfo(VisitAndGetType(node->expr));
+            inner_ref_type.element = new TypeInfo(VisitAndGetType(node->expr,result));
             ref_type.element = new TypeInfo(inner_ref_type);
             return ref_type;
         }
         else{
-            TypeInfo type = VisitAndGetType(node->expr);
+            TypeInfo type = VisitAndGetType(node->expr,result);
             // 允许一层共享引用作为算术/位运算的操作数
             if(type.kind == TypeInfo::Ref && !type.is_mut && type.element != nullptr) type = *type.element;
             if(type.kind == TypeInfo::Default) type.kind = TypeInfo::I32;
@@ -801,18 +820,18 @@ SemanticCheck::TypeInfo SemanticCheck::VisitUnaryExpr(UnaryExprNode* node){
         }
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitCastExpr(CastExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitCastExpr(CastExprNode* node,SemanticResult &result){
     if(node->types.size() == 0){
-        return VisitAndGetType(node->expr);
+        return VisitAndGetType(node->expr,result);
     }
     else{
         // cast支持： integer-to-integer casts and bool-to-integer casts
-        TypeInfo cur_type = VisitAndGetType(node->expr);
+        TypeInfo cur_type = VisitAndGetType(node->expr,result);
         if(cur_type.kind == TypeInfo::Default) cur_type.kind = TypeInfo::I32;
         for(auto type : node->types){
             if(cur_type.kind == TypeInfo::I32 || cur_type.kind == TypeInfo::U32
             || cur_type.kind == TypeInfo::Isize || cur_type.kind == TypeInfo::Usize){
-                TypeInfo cast_type = VisitAndGetType(type);
+                TypeInfo cast_type = VisitAndGetType(type,result);
                 if(cast_type.kind == TypeInfo::I32 || cast_type.kind == TypeInfo::U32
                 || cast_type.kind == TypeInfo::Isize || cast_type.kind == TypeInfo::Usize){
                     // integer-to-integer
@@ -824,7 +843,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCastExpr(CastExprNode* node){
                 }
             }
             else if(cur_type.kind == TypeInfo::Bool){
-                TypeInfo cast_type = VisitAndGetType(type);
+                TypeInfo cast_type = VisitAndGetType(type,result);
                 if(cast_type.kind == TypeInfo::I32 || cast_type.kind == TypeInfo::U32
                 || cast_type.kind == TypeInfo::Isize || cast_type.kind == TypeInfo::Usize){
                     // bool-to-integer
@@ -843,18 +862,18 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCastExpr(CastExprNode* node){
         return cur_type;
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitIfExpr(IfExprNode* node){
-    TypeInfo condition = VisitAndGetType(node->condition);
+SemanticCheck::TypeInfo SemanticCheck::VisitIfExpr(IfExprNode* node,SemanticResult &result){
+    TypeInfo condition = VisitAndGetType(node->condition,result);
     if(condition.kind != TypeInfo::Never && condition.kind != TypeInfo::Bool){
         error = true;
     }
-    TypeInfo if_type = VisitAndGetType(node->if_block);
+    TypeInfo if_type = VisitAndGetType(node->if_block,result);
     TypeInfo else_type;
     else_type.kind = TypeInfo::Unit;
     if(if_type.kind == TypeInfo::Unknown) error = true;
     if(node->else_block != nullptr){
         // 有else分支
-        else_type = VisitAndGetType(node->else_block);
+        else_type = VisitAndGetType(node->else_block,result);
         if(else_type.kind == TypeInfo::Unknown) error = true;
         if(if_type.kind != TypeInfo::Never && else_type.kind != TypeInfo::Never && !IsTypeEqual(if_type,else_type)){
             if(CanCoerce(if_type,else_type)){
@@ -892,7 +911,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitIfExpr(IfExprNode* node){
         return else_type;
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitLoopExpr(LoopExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitLoopExpr(LoopExprNode* node,SemanticResult &result){
     TypeInfo loop_type;
     if(node->content != nullptr){
         CycleInfo loop_info;
@@ -900,7 +919,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitLoopExpr(LoopExprNode* node){
         cycles_stack.push_back(loop_info); // cycles_stack记录当前最里层的循环
         bool outer_condition = analysize_condition;
         analysize_condition = false;
-        loop_type = VisitAndGetType(node->content);
+        loop_type = VisitAndGetType(node->content,result);
         analysize_condition = outer_condition;
         loop_info = cycles_stack.back();
         cycles_stack.pop_back();
@@ -939,18 +958,18 @@ SemanticCheck::TypeInfo SemanticCheck::VisitLoopExpr(LoopExprNode* node){
     }
     return loop_type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitWhileExpr(WhileExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitWhileExpr(WhileExprNode* node,SemanticResult &result){
     CycleInfo while_info;
     while_info.is_loop = false;
     bool outer_condition = analysize_condition;
     analysize_condition = true;
-    TypeInfo condition = VisitAndGetType(node->condition);
+    TypeInfo condition = VisitAndGetType(node->condition,result);
     analysize_condition = false;
     cycles_stack.push_back(while_info);
     if(condition.kind != TypeInfo::Never && condition.kind != TypeInfo::Bool){
         error = true;
     }
-    TypeInfo while_type = VisitAndGetType(node->content);
+    TypeInfo while_type = VisitAndGetType(node->content,result);
     analysize_condition = outer_condition;
     while_info = cycles_stack.back();
     cycles_stack.pop_back();
@@ -965,7 +984,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitWhileExpr(WhileExprNode* node){
     }
     return while_type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitBreakExpr(BreakExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitBreakExpr(BreakExprNode* node,SemanticResult &result){
     if(cycles_stack.size() == 0){
         error = true; // 在循环外面break
         return TypeInfo(TypeInfo::Never);
@@ -976,7 +995,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBreakExpr(BreakExprNode* node){
     CycleInfo &cycle = cycles_stack.back();
     TypeInfo break_type;
     if(node->expr != nullptr){
-        break_type = VisitAndGetType(node->expr);
+        break_type = VisitAndGetType(node->expr,result);
         if(break_type.kind == TypeInfo::Unknown) error = true;
         cycle.exit_types.push_back(break_type);
     }
@@ -986,7 +1005,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitBreakExpr(BreakExprNode* node){
     }
     return TypeInfo(TypeInfo::Never); // break的类型总是为never
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitContinueExpr(ContinueExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitContinueExpr(ContinueExprNode* node,SemanticResult &result){
     if(cycles_stack.size() == 0 || analysize_condition){
         error = true;
         // return TypeInfo(TypeInfo::Never);
@@ -995,7 +1014,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitContinueExpr(ContinueExprNode* node)
     // cycle.exit_types.push_back(TypeInfo(TypeInfo::Never));
     return TypeInfo(TypeInfo::Never);
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node){ 
+SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node,SemanticResult &result){ 
     if(node->segments.size() == 1){
         if(node->segments[0].first == "Self" && !current_impl_type.empty()){
             TypeInfo type(TypeInfo::Struct);
@@ -1075,7 +1094,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo inner = VisitAndGetType(generic[0]);
+                TypeInfo inner = VisitAndGetType(generic[0],result);
                 TypeInfo vec_type;
                 vec_type.kind = TypeInfo::Vec;
                 vec_type.element = new TypeInfo(inner);
@@ -1095,7 +1114,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo inner = VisitAndGetType(generic[0]);
+                TypeInfo inner = VisitAndGetType(generic[0],result);
                 TypeInfo box_type;
                 box_type.kind = TypeInfo::Box;
                 box_type.element = new TypeInfo(inner);
@@ -1109,7 +1128,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo inner = VisitAndGetType(generic[0]);
+                TypeInfo inner = VisitAndGetType(generic[0],result);
                 TypeInfo box_type;
                 box_type.kind = TypeInfo::Box;
                 box_type.element = new TypeInfo(inner);
@@ -1130,7 +1149,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitPathExpr(PathExprNode* node){
         return TypeInfo(TypeInfo::Unknown);
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitStructExpr(StructExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitStructExpr(StructExprNode* node,SemanticResult &result){
     auto path = static_cast<PathExprNode*>(node->struct_name);
     if(path->segments.size() != 1 || path->segments[0].second.size() != 0){
         error = true; // 多段路径 有泛型参数
@@ -1158,7 +1177,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitStructExpr(StructExprNode* node){
         }
         else{
             auto field_type = struct_fields[name];
-            TypeInfo expr_type = VisitAndGetType(node->expr[cnt]);
+            TypeInfo expr_type = VisitAndGetType(node->expr[cnt],result);
             if(!IsTypeEqual(*field_type,expr_type)){
                 error = true; // 赋值类型不匹配
                 return TypeInfo(TypeInfo::Unknown);
@@ -1168,16 +1187,16 @@ SemanticCheck::TypeInfo SemanticCheck::VisitStructExpr(StructExprNode* node){
     }
     return type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitArrayExpr(ArrayExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitArrayExpr(ArrayExprNode* node,SemanticResult &result){
     TypeInfo array_type = TypeInfo(TypeInfo::Array);
     TypeInfo lub_type = TypeInfo(TypeInfo::Never); // 数组类型最终取类型的least upper bound
     array_type.length = node->elements.size();
     if(array_type.length == 1){
-        lub_type = VisitAndGetType(node->elements[0]);
+        lub_type = VisitAndGetType(node->elements[0],result);
     }
     else{
         for(auto element : node->elements){
-            TypeInfo cur_type = VisitAndGetType(element);
+            TypeInfo cur_type = VisitAndGetType(element,result);
             if(lub_type.kind == TypeInfo::Never){
                lub_type = cur_type;
             }
@@ -1200,16 +1219,16 @@ SemanticCheck::TypeInfo SemanticCheck::VisitArrayExpr(ArrayExprNode* node){
     array_type.element = new TypeInfo(lub_type);
     return array_type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitArrayRepeat(ArrayRepeatNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitArrayRepeat(ArrayRepeatNode* node,SemanticResult &result){
     TypeInfo array_type = TypeInfo(TypeInfo::Array);
-    TypeInfo inner_type = VisitAndGetType(node->element);
+    TypeInfo inner_type = VisitAndGetType(node->element,result);
     if(inner_type.kind == TypeInfo::Unknown){
         error = true; // 未知类型
         return TypeInfo();
     }
     array_type.element = new TypeInfo(inner_type);
     in_scope = false;
-    TypeInfo num_type = VisitAndGetType(node->num);
+    TypeInfo num_type = VisitAndGetType(node->num,result);
     if(in_scope){
         error = true; // 不是编译期常量
     }
@@ -1229,12 +1248,15 @@ SemanticCheck::TypeInfo SemanticCheck::VisitArrayRepeat(ArrayRepeatNode* node){
     }
     return array_type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node,SemanticResult &result){
     call_path.clear();
-    TypeInfo call_type = VisitAndGetType(node->func);
+    TypeInfo call_type = VisitAndGetType(node->func,result);
     if(call_type.kind == TypeInfo::Unknown){
         error = true;
         return TypeInfo();
+    }
+    for(auto path_sgement : call_path){
+        result.calls_table[node].push_back(path_sgement); // 避免IR部分重复解析
     }
     // PathExpr里优先判断函数 可能和struct重名
     if(call_path.size() == 1){
@@ -1249,7 +1271,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
         }
         int cnt = 0;
         for(auto param : func_info->params){
-            TypeInfo param_type = VisitAndGetType(node->args[cnt]); // 调用node里存的参数类型
+            TypeInfo param_type = VisitAndGetType(node->args[cnt],result); // 调用node里存的参数类型
             // if(param_type.kind == TypeInfo::Default) param_type.kind = TypeInfo::I32;
             // 尝试强制转换
             if(!IsTypeEqual(param_type,*param.second->type) && !CanCoerce(param_type,*param.second->type)){
@@ -1258,7 +1280,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
             }
             TypeInfo expected_type = *param.second->type; // 函数签名里写的参数类型
             if(expected_type.kind == TypeInfo::Ref && expected_type.is_mut){
-                PlaceInfo argument_place = AnalyzePlace(node->args[cnt]);
+                PlaceInfo argument_place = AnalyzePlace(node->args[cnt],result);
                 if(argument_place.has_pass_shared_ref){
                     error = true; // 不能通过共享/不可变路径提供 &mut 参数
                     return TypeInfo();
@@ -1284,7 +1306,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo receiver_type = VisitAndGetType(node->args[0]);
+                TypeInfo receiver_type = VisitAndGetType(node->args[0],result);
                 if(receiver_type.kind != TypeInfo::Ref || receiver_type.element == nullptr ||
                    !IsTypeEqual(*receiver_type.element,call_type)){
                     error = true;
@@ -1297,7 +1319,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo receiver_type = VisitAndGetType(node->args[0]);
+                TypeInfo receiver_type = VisitAndGetType(node->args[0],result);
                 if(receiver_type.kind != TypeInfo::Ref || receiver_type.element == nullptr ||
                    !IsTypeEqual(*receiver_type.element,call_type)){
                     error = true;
@@ -1311,13 +1333,13 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo receiver_type = VisitAndGetType(node->args[0]);
+                TypeInfo receiver_type = VisitAndGetType(node->args[0],result);
                 if(receiver_type.kind != TypeInfo::Ref || !receiver_type.is_mut ||
                    receiver_type.element == nullptr || !IsTypeEqual(*receiver_type.element,call_type)){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo value_type = VisitAndGetType(node->args[1]);
+                TypeInfo value_type = VisitAndGetType(node->args[1],result);
                 if(value_type.kind != TypeInfo::Never &&
                    !IsTypeEqual(value_type,*call_type.element)){
                     error = true;
@@ -1336,7 +1358,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo arg_type = VisitAndGetType(node->args[0]);
+                TypeInfo arg_type = VisitAndGetType(node->args[0],result);
                 if(arg_type.kind == TypeInfo::Unknown || !IsTypeEqual(arg_type,*call_type.element)){
                     error = true;
                     return TypeInfo();
@@ -1348,7 +1370,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
                     error = true;
                     return TypeInfo();
                 }
-                TypeInfo arg_type = VisitAndGetType(node->args[0]);
+                TypeInfo arg_type = VisitAndGetType(node->args[0],result);
                 // 进行类型的合法性检查
                 if(arg_type.kind == TypeInfo::Unknown || !IsTypeEqual(*arg_type.element,call_type)){
                     error = true;
@@ -1373,7 +1395,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
                 error = true;
                 return TypeInfo();
             }
-            TypeInfo receiver_type = VisitAndGetType(node->args[0]);
+            TypeInfo receiver_type = VisitAndGetType(node->args[0],result);
             if(receiver_type.kind != TypeInfo::Ref || receiver_type.element == nullptr ||
                !IsTypeEqual(*receiver_type.element,call_type)){
                 error = true;
@@ -1392,7 +1414,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
         }
         int cnt = 0;
         for(auto param : method->params){
-            TypeInfo param_type = VisitAndGetType(node->args[cnt]);
+            TypeInfo param_type = VisitAndGetType(node->args[cnt],result);
             if(!IsTypeEqual(param_type,*param.second->type) && !CanCoerce(param_type,*param.second->type)){
                 error = true;
                 return TypeInfo();
@@ -1406,9 +1428,9 @@ SemanticCheck::TypeInfo SemanticCheck::VisitCallExpr(CallExprNode* node){
     }
     return call_type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* node,SemanticResult &result){
     // 解引用之前先检查是不是clone()，如果是不需要先解引用
-    TypeInfo receiver_type = VisitAndGetType(node->receiver);
+    TypeInfo receiver_type = VisitAndGetType(node->receiver,result);
     if(node->name.first == "clone"){
         if(node->args.size() != 0){
             error = true;
@@ -1459,7 +1481,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* n
         }
         else if(node->name.first == "push"){
             // 接收者可能是存储在不可变数组/Box里的&mut Vec，先穿透引用层再判断可变性
-            PlaceInfo receiver_place = AnalyzePlace(node->receiver);
+            PlaceInfo receiver_place = AnalyzePlace(node->receiver,result);
             while(receiver_place.type.kind == TypeInfo::Ref || receiver_place.type.kind == TypeInfo::Box){
                 receiver_place = DereferencePlace(receiver_place);
             }
@@ -1472,7 +1494,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* n
                 return TypeInfo();
             }
             else{
-                TypeInfo add_type = VisitAndGetType(node->args[0]);
+                TypeInfo add_type = VisitAndGetType(node->args[0],result);
                 if(add_type.kind != TypeInfo::Never && !IsTypeEqual(add_type,*receiver_type.element)){
                     error = true;
                     return TypeInfo();
@@ -1481,7 +1503,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* n
             }
         }
         else if(node->name.first == "remove"){
-            PlaceInfo receiver_place = AnalyzePlace(node->receiver);
+            PlaceInfo receiver_place = AnalyzePlace(node->receiver,result);
             while(receiver_place.type.kind == TypeInfo::Ref || receiver_place.type.kind == TypeInfo::Box){
                 receiver_place = DereferencePlace(receiver_place);
             }
@@ -1494,7 +1516,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* n
                 return TypeInfo();
             }
             else{
-                TypeInfo remove_type = VisitAndGetType(node->args[0]);
+                TypeInfo remove_type = VisitAndGetType(node->args[0],result);
                 if(remove_type.kind != TypeInfo::Default && remove_type.kind != TypeInfo::Usize){
                     error = true;
                     return TypeInfo();
@@ -1529,7 +1551,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* n
         // 如果method第一个参数是&mut self 需要检查receiver是否具有can_mut_content性质
         // 包括自动解引用之后是否可写（同样不能穿透共享引用）
         if(self_type->kind == TypeInfo::Ref && self_type->is_mut){
-            PlaceInfo receiver_place = AnalyzePlace(node->receiver);
+            PlaceInfo receiver_place = AnalyzePlace(node->receiver,result);
             while(receiver_place.type.kind == TypeInfo::Ref || receiver_place.type.kind == TypeInfo::Box){
                 receiver_place = DereferencePlace(receiver_place);
             }
@@ -1540,7 +1562,7 @@ SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* n
         }
         int cnt = 1;
         for(auto arg : node->args){
-            TypeInfo arg_type = VisitAndGetType(arg);
+            TypeInfo arg_type = VisitAndGetType(arg,result);
             if(!IsTypeEqual(arg_type,*method_info->params[cnt].second->type) && !CanCoerce(arg_type,*method_info->params[cnt].second->type)){
                 error = true;
                 return TypeInfo();
@@ -1551,8 +1573,8 @@ SemanticCheck::TypeInfo SemanticCheck::VisitMethodCallExpr(MethodCallExprNode* n
     }
     return TypeInfo();
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitFieldExpr(FieldExprNode* node){
-    TypeInfo receiver = VisitAndGetType(node->receiver);
+SemanticCheck::TypeInfo SemanticCheck::VisitFieldExpr(FieldExprNode* node,SemanticResult &result){
+    TypeInfo receiver = VisitAndGetType(node->receiver,result);
     // auto deref
     while(receiver.kind == TypeInfo::Box || receiver.kind == TypeInfo::Ref){
         receiver = *receiver.element;
@@ -1571,15 +1593,15 @@ SemanticCheck::TypeInfo SemanticCheck::VisitFieldExpr(FieldExprNode* node){
         return *struct_info->fields[node->name];
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitIndexExpr(IndexExprNode* node){
-    TypeInfo base_type = VisitAndGetType(node->base);
+SemanticCheck::TypeInfo SemanticCheck::VisitIndexExpr(IndexExprNode* node,SemanticResult &result){
+    TypeInfo base_type = VisitAndGetType(node->base,result);
     // auto dereference
     while(base_type.kind == TypeInfo::Ref || base_type.kind == TypeInfo::Box){
          base_type = *base_type.element;
     }
     if(base_type.kind == TypeInfo::Array || base_type.kind == TypeInfo::Vec){
         // 数组类型
-        TypeInfo index_type = VisitAndGetType(node->index);
+        TypeInfo index_type = VisitAndGetType(node->index,result);
         if(index_type.kind != TypeInfo::Usize && index_type.kind != TypeInfo::Default){
             error = true;
             return TypeInfo();
@@ -1589,22 +1611,22 @@ SemanticCheck::TypeInfo SemanticCheck::VisitIndexExpr(IndexExprNode* node){
     error = true;
     return TypeInfo();
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitReturnExpr(ReturnExprNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitReturnExpr(ReturnExprNode* node,SemanticResult &result){
     TypeInfo return_type(TypeInfo::Never);
     if(node->expr == nullptr){
         function_return_types.push_back(TypeInfo(TypeInfo::Unit));
         return return_type;
     } 
     else{
-        function_return_types.push_back(VisitAndGetType(node->expr));
+        function_return_types.push_back(VisitAndGetType(node->expr,result));
         return return_type;
     }
 }
 // types
-SemanticCheck::TypeInfo SemanticCheck::VisitUnitType(UnitTypeNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitUnitType(UnitTypeNode* node,SemanticResult &result){
     return TypeInfo(TypeInfo::Unit);
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitPathType(PathTypeNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitPathType(PathTypeNode* node,SemanticResult &result){
     if(node->segments.size() == 1){
         std::string name = node->segments[0].first;
         auto generics = node->segments[0].second;
@@ -1626,13 +1648,13 @@ SemanticCheck::TypeInfo SemanticCheck::VisitPathType(PathTypeNode* node){
         else if(name == "Vec" && generics.size() == 1){
             TypeInfo vec_type;
             vec_type.kind = TypeInfo::Vec;
-            vec_type.element = new TypeInfo(VisitAndGetType(generics[0]));
+            vec_type.element = new TypeInfo(VisitAndGetType(generics[0],result));
             return vec_type;
         }
         else if(name == "Box" && generics.size() == 1){
             TypeInfo box_type;
             box_type.kind = TypeInfo::Box;
-            box_type.element = new TypeInfo(VisitAndGetType(generics[0]));
+            box_type.element = new TypeInfo(VisitAndGetType(generics[0],result));
             return box_type;
         }
         else{
@@ -1653,14 +1675,14 @@ SemanticCheck::TypeInfo SemanticCheck::VisitPathType(PathTypeNode* node){
         return TypeInfo();
     }
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitArrayType(ArrayTypeNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitArrayType(ArrayTypeNode* node,SemanticResult &result){
     TypeInfo type,element;
     type.kind = TypeInfo::Array;
-    element = VisitAndGetType(node->type);
+    element = VisitAndGetType(node->type,result);
     type.element = new TypeInfo;
     *type.element = element;
     in_scope = false;
-    TypeInfo num_type = VisitAndGetType(node->length);
+    TypeInfo num_type = VisitAndGetType(node->length,result);
     if(in_scope) error = true;
     if(num_type.kind == TypeInfo::Default) num_type.kind = TypeInfo::Usize;
     if(num_type.kind != TypeInfo::Usize) error = true;
@@ -1669,12 +1691,12 @@ SemanticCheck::TypeInfo SemanticCheck::VisitArrayType(ArrayTypeNode* node){
     }
     return type;
 }
-SemanticCheck::TypeInfo SemanticCheck::VisitRefType(RefTypeNode* node){
+SemanticCheck::TypeInfo SemanticCheck::VisitRefType(RefTypeNode* node,SemanticResult &result){
     TypeInfo type;
     type.kind = TypeInfo::Ref;
     if(node->mut) type.is_mut = true;
     type.element = new TypeInfo;
-    *type.element = VisitAndGetType(node->type);
+    *type.element = VisitAndGetType(node->type,result);
     return type;
 }
 // Tools
@@ -1830,8 +1852,8 @@ bool SemanticCheck::IsTypeEqual(const TypeInfo& a,const TypeInfo& b){
 }
 // 可以作为左值的expression：路径，解引用，struct字段，index，临时物化（Call的返回值）
 // 不能穿过可变引用
-bool SemanticCheck::CanWrite(ASTNode* node){
-    return AnalyzePlace(node).can_write;
+bool SemanticCheck::CanWrite(ASTNode* node,SemanticResult &result){
+    return AnalyzePlace(node,result).can_write;
 }
 bool SemanticCheck::IsPlaceExpr(ASTNode* node){
     // 解开AST里的多层封装，与AnalyzePlace一致
@@ -1893,7 +1915,7 @@ SemanticCheck::PlaceInfo SemanticCheck::DereferencePlace(const PlaceInfo& base){
     }
     return result;
 }
-SemanticCheck::PlaceInfo SemanticCheck::AnalyzePlace(ASTNode* node){
+SemanticCheck::PlaceInfo SemanticCheck::AnalyzePlace(ASTNode* node,SemanticResult &result_){
     PlaceInfo result;
     // 解开AST里的多层封装
     while(node != nullptr){
@@ -1950,7 +1972,7 @@ SemanticCheck::PlaceInfo SemanticCheck::AnalyzePlace(ASTNode* node){
     }
     else if(node->kind == CallExpr){
         // struct array vec box 临时值可以物化作为place
-        result.type = VisitAndGetType(node);
+        result.type = VisitAndGetType(node,result_);
         if(result.type.kind == TypeInfo::Struct || result.type.kind == TypeInfo::Array ||
            result.type.kind == TypeInfo::Vec || result.type.kind == TypeInfo::Box){
             result.can_mutate_contents = true;
@@ -1960,12 +1982,12 @@ SemanticCheck::PlaceInfo SemanticCheck::AnalyzePlace(ASTNode* node){
     else if(node->kind == UnaryExpr){
         auto unary = static_cast<UnaryExprNode*>(node);
         if(unary->op == "*"){
-            return DereferencePlace(AnalyzePlace(unary->expr));
+            return DereferencePlace(AnalyzePlace(unary->expr,result_));
         }
     }
     else if(node->kind == FieldExpr){
         auto field = static_cast<FieldExprNode*>(node);
-        PlaceInfo base = AnalyzePlace(field->receiver);
+        PlaceInfo base = AnalyzePlace(field->receiver,result_);
         while(base.type.kind == TypeInfo::Ref || base.type.kind == TypeInfo::Box){
             base = DereferencePlace(base);
         }
@@ -1986,7 +2008,7 @@ SemanticCheck::PlaceInfo SemanticCheck::AnalyzePlace(ASTNode* node){
     }
     else if(node->kind == IndexExpr){
         auto index = static_cast<IndexExprNode*>(node);
-        PlaceInfo base = AnalyzePlace(index->base);
+        PlaceInfo base = AnalyzePlace(index->base,result_);
         while(base.type.kind == TypeInfo::Ref || base.type.kind == TypeInfo::Box){
             base = DereferencePlace(base);
         }
@@ -2012,11 +2034,11 @@ SemanticCheck::PlaceInfo SemanticCheck::AnalyzePlace(ASTNode* node){
     else if(node->kind == ExprStmt){
         auto statement = static_cast<ExprStmtNode*>(node);
         if(statement->expr == nullptr) return result;
-        result.type = VisitAndGetType(statement->expr);
+        result.type = VisitAndGetType(statement->expr,result_);
     }
     else if(node->kind == BlockExpr){
         // 块表达式作为值会物化成临时值，获得新place的可变性
-        result.type = VisitAndGetType(node);
+        result.type = VisitAndGetType(node,result_);
         if(result.type.kind == TypeInfo::Struct || result.type.kind == TypeInfo::Array ||
            result.type.kind == TypeInfo::Vec || result.type.kind == TypeInfo::Box){
             result.can_mutate_contents = true;
